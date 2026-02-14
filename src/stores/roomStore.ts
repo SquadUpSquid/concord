@@ -1,0 +1,49 @@
+import { create } from "zustand";
+
+export interface RoomSummary {
+  roomId: string;
+  name: string;
+  avatarUrl: string | null;
+  topic: string | null;
+  unreadCount: number;
+  isSpace: boolean;
+  parentSpaceId: string | null;
+  lastMessageTs: number;
+}
+
+interface RoomState {
+  rooms: Map<string, RoomSummary>;
+  selectedSpaceId: string | null;
+  selectedRoomId: string | null;
+  syncState: "STOPPED" | "SYNCING" | "PREPARED" | "ERROR";
+
+  setRooms: (rooms: Map<string, RoomSummary>) => void;
+  updateRoom: (roomId: string, update: Partial<RoomSummary>) => void;
+  selectSpace: (spaceId: string | null) => void;
+  selectRoom: (roomId: string | null) => void;
+  setSyncState: (state: RoomState["syncState"]) => void;
+}
+
+export const useRoomStore = create<RoomState>()((set, get) => ({
+  rooms: new Map(),
+  selectedSpaceId: null,
+  selectedRoomId: null,
+  syncState: "STOPPED",
+
+  setRooms: (rooms) => set({ rooms }),
+
+  updateRoom: (roomId, update) => {
+    const rooms = new Map(get().rooms);
+    const existing = rooms.get(roomId);
+    if (existing) {
+      rooms.set(roomId, { ...existing, ...update });
+      set({ rooms });
+    }
+  },
+
+  selectSpace: (spaceId) => set({ selectedSpaceId: spaceId, selectedRoomId: null }),
+
+  selectRoom: (roomId) => set({ selectedRoomId: roomId }),
+
+  setSyncState: (syncState) => set({ syncState }),
+}));

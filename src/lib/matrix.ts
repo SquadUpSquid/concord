@@ -1,4 +1,5 @@
 import * as sdk from "matrix-js-sdk";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 
 let matrixClient: sdk.MatrixClient | null = null;
 
@@ -25,6 +26,7 @@ export async function initMatrixClient(
     deviceId,
     store,
     timelineSupport: true,
+    fetchFn: tauriFetch as unknown as typeof globalThis.fetch,
   });
 
   await matrixClient.initRustCrypto();
@@ -49,7 +51,10 @@ export async function loginToMatrix(
   username: string,
   password: string
 ): Promise<{ accessToken: string; userId: string; deviceId: string }> {
-  const tempClient = sdk.createClient({ baseUrl: homeserverUrl });
+  const tempClient = sdk.createClient({
+    baseUrl: homeserverUrl,
+    fetchFn: tauriFetch as unknown as typeof globalThis.fetch,
+  });
 
   const response = await tempClient.login("m.login.password", {
     identifier: { type: "m.id.user", user: username },

@@ -36,10 +36,16 @@ export function LoginPage() {
         deviceId
       );
       registerEventHandlers(client);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Login failed. Check your credentials."
-      );
+    } catch (err: unknown) {
+      console.error("Login error:", err);
+      let msg = "Login failed. Check your credentials.";
+      if (err instanceof Error) {
+        msg = err.message;
+      } else if (typeof err === "object" && err !== null && "data" in err) {
+        const matrixErr = err as { data?: { error?: string } };
+        msg = matrixErr.data?.error ?? msg;
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }

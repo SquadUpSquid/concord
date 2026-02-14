@@ -22,13 +22,8 @@ export function LoginPage() {
         password
       );
 
-      useAuthStore.getState().setCredentials({
-        accessToken,
-        userId,
-        deviceId,
-        homeserverUrl: homeserver,
-      });
-
+      // Init client BEFORE setting credentials so isLoggedIn only
+      // flips to true after everything succeeds
       const client = await initMatrixClient(
         homeserver,
         accessToken,
@@ -36,8 +31,18 @@ export function LoginPage() {
         deviceId
       );
       registerEventHandlers(client);
+
+      // Only mark as logged in after client is fully initialized
+      useAuthStore.getState().setCredentials({
+        accessToken,
+        userId,
+        deviceId,
+        homeserverUrl: homeserver,
+      });
     } catch (err: unknown) {
       console.error("Login error:", err);
+      // Safety: ensure we're logged out if anything failed
+      useAuthStore.getState().logout();
       let msg = "Login failed. Check your credentials.";
       if (err instanceof Error) {
         msg = err.message;

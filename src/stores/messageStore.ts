@@ -17,6 +17,7 @@ export interface Message {
   timestamp: number;
   type: string;
   isEncrypted: boolean;
+  isDecryptionFailure: boolean;
   replyToEvent: { senderId: string; senderName: string; body: string } | null;
   reactions: Reaction[];
 }

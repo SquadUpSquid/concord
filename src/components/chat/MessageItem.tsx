@@ -14,6 +14,18 @@ interface MessageItemProps {
 
 const QUICK_EMOJIS = ["\u{1F44D}", "\u{2764}\uFE0F", "\u{1F602}", "\u{1F622}", "\u{1F440}", "\u{1F389}"];
 
+function EncryptedPlaceholder() {
+  return (
+    <div className="flex items-center gap-1.5 text-sm italic text-text-muted">
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+        <path d="M7 11V7a5 5 0 0110 0v4" />
+      </svg>
+      <span>Unable to decrypt — message was sent before this device logged in</span>
+    </div>
+  );
+}
+
 function ReplyContext({ reply }: { reply: NonNullable<Message["replyToEvent"]> }) {
   return (
     <div className="mb-1 flex items-center gap-1.5 text-xs text-text-muted">
@@ -152,7 +164,10 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
               {formatTimestamp(message.timestamp)}
             </span>
           </div>
-          <MessageContent body={message.body} formattedBody={message.formattedBody} />
+          {message.isDecryptionFailure
+            ? <EncryptedPlaceholder />
+            : <MessageContent body={message.body} formattedBody={message.formattedBody} />
+          }
           <ReactionBar reactions={message.reactions} eventId={message.eventId} roomId={message.roomId} />
         </div>
       </div>

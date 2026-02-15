@@ -13,6 +13,7 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
     timestamp: Date.now(),
     type: "m.text",
     isEncrypted: false,
+    isDecryptionFailure: false,
     replyToEvent: null,
     reactions: [],
     ...overrides,

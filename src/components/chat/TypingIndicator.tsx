@@ -4,8 +4,10 @@ interface TypingIndicatorProps {
   roomId: string;
 }
 
+const EMPTY_TYPING: string[] = [];
+
 export function TypingIndicator({ roomId }: TypingIndicatorProps) {
-  const typing = useTypingStore((s) => s.typingByRoom.get(roomId) ?? []);
+  const typing = useTypingStore((s) => s.typingByRoom.get(roomId) ?? EMPTY_TYPING);
 
   if (typing.length === 0) return null;
 

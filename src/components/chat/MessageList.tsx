@@ -8,8 +8,10 @@ interface MessageListProps {
   roomId: string;
 }
 
+const EMPTY_MESSAGES: import("@/stores/messageStore").Message[] = [];
+
 export function MessageList({ roomId }: MessageListProps) {
-  const messages = useMessageStore((s) => s.messagesByRoom.get(roomId) ?? []);
+  const messages = useMessageStore((s) => s.messagesByRoom.get(roomId) ?? EMPTY_MESSAGES);
   const isLoadingHistory = useMessageStore((s) => s.isLoadingHistory);
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);

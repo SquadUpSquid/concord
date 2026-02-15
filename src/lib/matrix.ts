@@ -3,6 +3,15 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 
 let matrixClient: sdk.MatrixClient | null = null;
 
+function deleteDatabase(name: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const req = globalThis.indexedDB.deleteDatabase(name);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => resolve();
+  });
+}
+
 export async function initMatrixClient(
   baseUrl: string,
   accessToken: string,
@@ -13,24 +22,39 @@ export async function initMatrixClient(
     matrixClient.stopClient();
   }
 
-  const store = new sdk.IndexedDBStore({
-    indexedDB: globalThis.indexedDB,
-    dbName: "concord-matrix-store",
-  });
+  const createAndStart = async () => {
+    const store = new sdk.IndexedDBStore({
+      indexedDB: globalThis.indexedDB,
+      dbName: "concord-matrix-store",
+    });
 
-  matrixClient = sdk.createClient({
-    baseUrl,
-    accessToken,
-    userId,
-    deviceId,
-    store,
-    timelineSupport: true,
-    fetchFn: tauriFetch as unknown as typeof globalThis.fetch,
-  });
+    matrixClient = sdk.createClient({
+      baseUrl,
+      accessToken,
+      userId,
+      deviceId,
+      store,
+      timelineSupport: true,
+      fetchFn: tauriFetch as unknown as typeof globalThis.fetch,
+    });
 
-  await store.startup();
-  await matrixClient.initRustCrypto();
-  await matrixClient.startClient({ initialSyncLimit: 20 });
+    await store.startup();
+    await matrixClient.initRustCrypto();
+    await matrixClient.startClient({ initialSyncLimit: 20 });
+  };
+
+  try {
+    await createAndStart();
+  } catch (err) {
+    // Stale IndexedDB from a previous session — wipe and retry
+    if (String(err).includes("doesn't match")) {
+      await deleteDatabase("concord-matrix-store");
+      await deleteDatabase("matrix-js-sdk:crypto");
+      await createAndStart();
+    } else {
+      throw err;
+    }
+  }
 
   return matrixClient;
 }
@@ -44,6 +68,8 @@ export async function destroyMatrixClient(): Promise<void> {
     matrixClient.stopClient();
     matrixClient = null;
   }
+  await deleteDatabase("concord-matrix-store").catch(() => {});
+  await deleteDatabase("matrix-js-sdk:crypto").catch(() => {});
 }
 
 export async function loginToMatrix(

@@ -2,10 +2,12 @@ import { useRoomStore } from "@/stores/roomStore";
 import { useMemberStore } from "@/stores/memberStore";
 import { MemberItem } from "./MemberItem";
 
+const EMPTY_MEMBERS: import("@/stores/memberStore").Member[] = [];
+
 export function MemberSidebar() {
   const selectedRoomId = useRoomStore((s) => s.selectedRoomId);
   const members = useMemberStore(
-    (s) => (selectedRoomId ? s.membersByRoom.get(selectedRoomId) : null) ?? []
+    (s) => (selectedRoomId ? s.membersByRoom.get(selectedRoomId) : null) ?? EMPTY_MEMBERS
   );
 
   const sorted = [...members].sort((a, b) => {

@@ -5,6 +5,7 @@ import { loadRoomMessages } from "@/lib/matrixEventHandlers";
 import { ChatHeader } from "./ChatHeader";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
+import { TypingIndicator } from "./TypingIndicator";
 
 export function ChatView() {
   const selectedRoomId = useRoomStore((s) => s.selectedRoomId);
@@ -34,6 +35,7 @@ export function ChatView() {
         topic={room?.topic ?? null}
       />
       <MessageList roomId={selectedRoomId} />
+      <TypingIndicator roomId={selectedRoomId} />
       <MessageInput roomId={selectedRoomId} />
     </div>
   );

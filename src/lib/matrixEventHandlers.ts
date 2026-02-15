@@ -1,7 +1,9 @@
-import { MatrixClient, ClientEvent, RoomEvent, MatrixEvent, Room } from "matrix-js-sdk";
+import { MatrixClient, ClientEvent, RoomEvent, RoomMemberEvent, MatrixEvent, Room } from "matrix-js-sdk";
 import { useRoomStore, RoomSummary } from "@/stores/roomStore";
 import { useMessageStore, Message } from "@/stores/messageStore";
 import { useMemberStore, Member } from "@/stores/memberStore";
+import { useTypingStore } from "@/stores/typingStore";
+import { usePresenceStore, PresenceStatus } from "@/stores/presenceStore";
 import { mxcToHttp } from "@/utils/matrixHelpers";
 
 function mapEventToMessage(event: MatrixEvent, homeserverUrl: string): Message {
@@ -109,6 +111,32 @@ export function registerEventHandlers(client: MatrixClient): void {
 
   client.on(RoomEvent.Name, (room) => {
     useRoomStore.getState().updateRoom(room.roomId, { name: room.name });
+  });
+
+  // Typing indicators
+  client.on(RoomMemberEvent.Typing, (_event, member) => {
+    const roomId = member.roomId;
+    const room = client.getRoom(roomId);
+    if (!room) return;
+    const typingMembers = room.currentState
+      .getMembers()
+      .filter((m: { typing: boolean; userId: string }) => m.typing && m.userId !== client.getUserId())
+      .map((m: { name: string; userId: string }) => m.name || m.userId);
+    useTypingStore.getState().setTyping(roomId, typingMembers);
+  });
+
+  // User presence
+  client.on(ClientEvent.Event, (event) => {
+    if (event.getType() !== "m.presence") return;
+    const userId = event.getSender();
+    if (!userId) return;
+    const content = event.getContent();
+    usePresenceStore.getState().setPresence(userId, {
+      userId,
+      presence: (content.presence as PresenceStatus) ?? "offline",
+      lastActiveAgo: content.last_active_ago ?? null,
+      statusMsg: content.status_msg ?? null,
+    });
   });
 }
 

@@ -1,6 +1,7 @@
 import { Message } from "@/stores/messageStore";
 import { formatTimestamp } from "@/utils/formatters";
 import { Avatar } from "@/components/common/Avatar";
+import { MessageContent } from "./MessageContent";
 
 interface MessageItemProps {
   message: Message;
@@ -25,7 +26,7 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
               {formatTimestamp(message.timestamp)}
             </span>
           </div>
-          <p className="text-sm text-text-secondary">{message.body}</p>
+          <MessageContent body={message.body} formattedBody={message.formattedBody} />
         </div>
       </div>
     );
@@ -41,7 +42,9 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
           })}
         </span>
       </div>
-      <p className="flex-1 text-sm text-text-secondary">{message.body}</p>
+      <div className="flex-1">
+        <MessageContent body={message.body} formattedBody={message.formattedBody} />
+      </div>
     </div>
   );
 }

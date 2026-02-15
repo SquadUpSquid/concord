@@ -6,19 +6,57 @@ import { useTypingStore } from "@/stores/typingStore";
 import { usePresenceStore, PresenceStatus } from "@/stores/presenceStore";
 import { mxcToHttp } from "@/utils/matrixHelpers";
 
-function mapEventToMessage(event: MatrixEvent, homeserverUrl: string): Message {
+function mapEventToMessage(event: MatrixEvent, client: MatrixClient): Message {
   const sender = event.sender;
+  const homeserverUrl = client.getHomeserverUrl();
+  const content = event.getContent();
+
+  const room = client.getRoom(event.getRoomId() ?? "");
+
+  // Extract reply-to info from m.relates_to
+  let replyToEvent: Message["replyToEvent"] = null;
+  const inReplyTo = content["m.relates_to"]?.["m.in_reply_to"]?.event_id;
+  if (inReplyTo && room) {
+    const replyEvent = room.findEventById(inReplyTo);
+    if (replyEvent) {
+      replyToEvent = {
+        senderId: replyEvent.getSender() ?? "",
+        senderName: replyEvent.sender?.name ?? replyEvent.getSender() ?? "Unknown",
+        body: replyEvent.getContent().body ?? "",
+      };
+    }
+  }
+
+  // Aggregate reactions from the event's relations
+  const reactions: Message["reactions"] = [];
+  const relationsContainer = room?.relations.getChildEventsForEvent(
+    event.getId() ?? "", "m.annotation", "m.reaction"
+  );
+  if (relationsContainer) {
+    const sorted = relationsContainer.getSortedAnnotationsByKey();
+    if (sorted) {
+      for (const [key, eventSet] of sorted) {
+        const userIds = Array.from(eventSet)
+          .map((e) => e.getSender())
+          .filter((id): id is string => !!id);
+        reactions.push({ key, count: eventSet.size, userIds });
+      }
+    }
+  }
+
   return {
     eventId: event.getId() ?? "",
     roomId: event.getRoomId() ?? "",
     senderId: event.getSender() ?? "",
     senderName: sender?.name ?? event.getSender() ?? "Unknown",
     senderAvatar: sender ? mxcToHttp(sender.getMxcAvatarUrl(), homeserverUrl) : null,
-    body: event.getContent().body ?? "",
-    formattedBody: event.getContent().formatted_body ?? null,
+    body: content.body ?? "",
+    formattedBody: content.formatted_body ?? null,
     timestamp: event.getTs(),
-    type: event.getContent().msgtype ?? event.getType(),
+    type: content.msgtype ?? event.getType(),
     isEncrypted: event.isEncrypted(),
+    replyToEvent,
+    reactions,
   };
 }
 
@@ -84,6 +122,30 @@ function syncRoomMembers(client: MatrixClient, roomId: string): void {
   useMemberStore.getState().setMembers(roomId, members);
 }
 
+function updateReactionsForEvent(client: MatrixClient, roomId: string, eventId: string): void {
+  const room = client.getRoom(roomId);
+  if (!room) return;
+
+  const relationsContainer = room.relations.getChildEventsForEvent(
+    eventId, "m.annotation", "m.reaction"
+  );
+
+  const reactions: Message["reactions"] = [];
+  if (relationsContainer) {
+    const sorted = relationsContainer.getSortedAnnotationsByKey();
+    if (sorted) {
+      for (const [key, eventSet] of sorted) {
+        const userIds = Array.from(eventSet)
+          .map((e) => e.getSender())
+          .filter((id): id is string => !!id);
+        reactions.push({ key, count: eventSet.size, userIds });
+      }
+    }
+  }
+
+  useMessageStore.getState().updateReactions(roomId, eventId, reactions);
+}
+
 export function registerEventHandlers(client: MatrixClient): void {
   client.on(ClientEvent.Sync, (state) => {
     if (state === "PREPARED" || state === "SYNCING") {
@@ -98,8 +160,16 @@ export function registerEventHandlers(client: MatrixClient): void {
     if (toStartOfTimeline || !room) return;
 
     if (event.getType() === "m.room.message" || event.getType() === "m.room.encrypted") {
-      const message = mapEventToMessage(event, client.getHomeserverUrl());
+      const message = mapEventToMessage(event, client);
       useMessageStore.getState().addMessage(room.roomId, message);
+    }
+
+    // Handle reaction events
+    if (event.getType() === "m.reaction") {
+      const relates = event.getContent()["m.relates_to"];
+      if (relates?.event_id) {
+        updateReactionsForEvent(client, room.roomId, relates.event_id);
+      }
     }
 
     // Update room summary for last message timestamp
@@ -150,7 +220,7 @@ export function loadRoomMessages(client: MatrixClient, roomId: string): void {
         e.getType() === "m.room.message" ||
         e.getType() === "m.room.encrypted"
     )
-    .map((e) => mapEventToMessage(e, client.getHomeserverUrl()));
+    .map((e) => mapEventToMessage(e, client));
 
   useMessageStore.getState().setMessages(roomId, messages);
   syncRoomMembers(client, roomId);
@@ -173,7 +243,7 @@ export async function loadMoreMessages(
         e.getType() === "m.room.message" ||
         e.getType() === "m.room.encrypted"
     )
-    .map((e) => mapEventToMessage(e, client.getHomeserverUrl()));
+    .map((e) => mapEventToMessage(e, client));
 
   useMessageStore.getState().setMessages(roomId, messages);
   useMessageStore.getState().setLoadingHistory(false);

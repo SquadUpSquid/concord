@@ -13,6 +13,8 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
     timestamp: Date.now(),
     type: "m.text",
     isEncrypted: false,
+    replyToEvent: null,
+    reactions: [],
     ...overrides,
   };
 }
@@ -22,6 +24,7 @@ describe("messageStore", () => {
     useMessageStore.setState({
       messagesByRoom: new Map(),
       isLoadingHistory: false,
+      replyingTo: null,
     });
   });
 
@@ -82,5 +85,33 @@ describe("messageStore", () => {
 
     useMessageStore.getState().setLoadingHistory(false);
     expect(useMessageStore.getState().isLoadingHistory).toBe(false);
+  });
+
+  it("updates reactions for a message", () => {
+    const msg = makeMessage({ eventId: "$msg1" });
+    useMessageStore.getState().addMessage("!room1:matrix.org", msg);
+
+    const reactions = [
+      { key: "\u{1F44D}", count: 2, userIds: ["@a:mx.org", "@b:mx.org"] },
+      { key: "\u{2764}\uFE0F", count: 1, userIds: ["@a:mx.org"] },
+    ];
+    useMessageStore.getState().updateReactions("!room1:matrix.org", "$msg1", reactions);
+
+    const messages = useMessageStore.getState().messagesByRoom.get("!room1:matrix.org")!;
+    expect(messages[0].reactions).toEqual(reactions);
+  });
+
+  it("does not crash when updating reactions for unknown room", () => {
+    useMessageStore.getState().updateReactions("!unknown:mx.org", "$msg1", []);
+    expect(useMessageStore.getState().messagesByRoom.size).toBe(0);
+  });
+
+  it("sets and clears replyingTo", () => {
+    const msg = makeMessage();
+    useMessageStore.getState().setReplyingTo(msg);
+    expect(useMessageStore.getState().replyingTo).toEqual(msg);
+
+    useMessageStore.getState().setReplyingTo(null);
+    expect(useMessageStore.getState().replyingTo).toBeNull();
   });
 });

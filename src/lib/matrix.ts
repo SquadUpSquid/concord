@@ -22,39 +22,28 @@ export async function initMatrixClient(
     matrixClient.stopClient();
   }
 
-  const createAndStart = async () => {
-    const store = new sdk.IndexedDBStore({
-      indexedDB: globalThis.indexedDB,
-      dbName: "concord-matrix-store",
-    });
+  // Clear stale databases to prevent device ID mismatch errors
+  await deleteDatabase("concord-matrix-store").catch(() => {});
+  await deleteDatabase("matrix-js-sdk:crypto").catch(() => {});
 
-    matrixClient = sdk.createClient({
-      baseUrl,
-      accessToken,
-      userId,
-      deviceId,
-      store,
-      timelineSupport: true,
-      fetchFn: tauriFetch as unknown as typeof globalThis.fetch,
-    });
+  const store = new sdk.IndexedDBStore({
+    indexedDB: globalThis.indexedDB,
+    dbName: "concord-matrix-store",
+  });
 
-    await store.startup();
-    await matrixClient.initRustCrypto();
-    await matrixClient.startClient({ initialSyncLimit: 20 });
-  };
+  matrixClient = sdk.createClient({
+    baseUrl,
+    accessToken,
+    userId,
+    deviceId,
+    store,
+    timelineSupport: true,
+    fetchFn: tauriFetch as unknown as typeof globalThis.fetch,
+  });
 
-  try {
-    await createAndStart();
-  } catch (err) {
-    // Stale IndexedDB from a previous session — wipe and retry
-    if (String(err).includes("doesn't match")) {
-      await deleteDatabase("concord-matrix-store");
-      await deleteDatabase("matrix-js-sdk:crypto");
-      await createAndStart();
-    } else {
-      throw err;
-    }
-  }
+  await store.startup();
+  await matrixClient.initRustCrypto();
+  await matrixClient.startClient({ initialSyncLimit: 20 });
 
   return matrixClient;
 }

@@ -63,7 +63,8 @@ function mapEventToMessage(event: MatrixEvent, client: MatrixClient): Message {
     timestamp: event.getTs(),
     type: content.msgtype ?? event.getType(),
     isEncrypted: event.isEncrypted(),
-    isDecryptionFailure: event.isDecryptionFailure(),
+    isDecryptionFailure: event.isDecryptionFailure()
+      || (content.body ?? "").includes("Unable to decrypt"),
     replyToEvent,
     reactions,
   };

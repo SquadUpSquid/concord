@@ -17,7 +17,6 @@ export async function initMatrixClient(
     indexedDB: globalThis.indexedDB,
     dbName: "concord-matrix-store",
   });
-  await store.startup();
 
   matrixClient = sdk.createClient({
     baseUrl,
@@ -29,6 +28,7 @@ export async function initMatrixClient(
     fetchFn: tauriFetch as unknown as typeof globalThis.fetch,
   });
 
+  await store.startup();
   await matrixClient.initRustCrypto();
   await matrixClient.startClient({ initialSyncLimit: 20 });
 

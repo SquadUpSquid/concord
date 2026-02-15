@@ -12,6 +12,23 @@ function deleteDatabase(name: string): Promise<void> {
   });
 }
 
+async function clearAllDatabases(): Promise<void> {
+  if (typeof globalThis.indexedDB.databases === "function") {
+    const dbs = await globalThis.indexedDB.databases();
+    await Promise.all(
+      dbs.map((db) => db.name ? deleteDatabase(db.name) : Promise.resolve())
+    );
+  } else {
+    // Fallback: delete known database names
+    const knownNames = [
+      "concord-matrix-store",
+      "matrix-js-sdk:crypto",
+      "matrix-js-sdk::matrix-sdk-crypto",
+    ];
+    await Promise.all(knownNames.map((n) => deleteDatabase(n).catch(() => {})));
+  }
+}
+
 export async function initMatrixClient(
   baseUrl: string,
   accessToken: string,
@@ -22,9 +39,8 @@ export async function initMatrixClient(
     matrixClient.stopClient();
   }
 
-  // Clear stale databases to prevent device ID mismatch errors
-  await deleteDatabase("concord-matrix-store").catch(() => {});
-  await deleteDatabase("matrix-js-sdk:crypto").catch(() => {});
+  // Clear all IndexedDB databases to prevent device ID mismatch errors
+  await clearAllDatabases();
 
   const store = new sdk.IndexedDBStore({
     indexedDB: globalThis.indexedDB,
@@ -57,8 +73,7 @@ export async function destroyMatrixClient(): Promise<void> {
     matrixClient.stopClient();
     matrixClient = null;
   }
-  await deleteDatabase("concord-matrix-store").catch(() => {});
-  await deleteDatabase("matrix-js-sdk:crypto").catch(() => {});
+  await clearAllDatabases();
 }
 
 export async function loginToMatrix(

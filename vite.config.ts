@@ -13,6 +13,7 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    conditions: ["matrix-org:wasm-esm"],
   },
   test: {
     globals: true,

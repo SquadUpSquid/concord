@@ -11,37 +11,45 @@ function mapEventToMessage(event: MatrixEvent, client: MatrixClient): Message {
   const homeserverUrl = client.getHomeserverUrl();
   const content = event.getContent();
 
-  const room = client.getRoom(event.getRoomId() ?? "");
-
   // Extract reply-to info from m.relates_to
   let replyToEvent: Message["replyToEvent"] = null;
-  const inReplyTo = content["m.relates_to"]?.["m.in_reply_to"]?.event_id;
-  if (inReplyTo && room) {
-    const replyEvent = room.findEventById(inReplyTo);
-    if (replyEvent) {
-      replyToEvent = {
-        senderId: replyEvent.getSender() ?? "",
-        senderName: replyEvent.sender?.name ?? replyEvent.getSender() ?? "Unknown",
-        body: replyEvent.getContent().body ?? "",
-      };
+  try {
+    const room = client.getRoom(event.getRoomId() ?? "");
+    const inReplyTo = content["m.relates_to"]?.["m.in_reply_to"]?.event_id;
+    if (inReplyTo && room) {
+      const replyEvent = room.findEventById(inReplyTo);
+      if (replyEvent) {
+        replyToEvent = {
+          senderId: replyEvent.getSender() ?? "",
+          senderName: replyEvent.sender?.name ?? replyEvent.getSender() ?? "Unknown",
+          body: replyEvent.getContent().body ?? "",
+        };
+      }
     }
+  } catch {
+    // Ignore — reply context is optional
   }
 
   // Aggregate reactions from the event's relations
   const reactions: Message["reactions"] = [];
-  const relationsContainer = room?.relations.getChildEventsForEvent(
-    event.getId() ?? "", "m.annotation", "m.reaction"
-  );
-  if (relationsContainer) {
-    const sorted = relationsContainer.getSortedAnnotationsByKey();
-    if (sorted) {
-      for (const [key, eventSet] of sorted) {
-        const userIds = Array.from(eventSet)
-          .map((e) => e.getSender())
-          .filter((id): id is string => !!id);
-        reactions.push({ key, count: eventSet.size, userIds });
+  try {
+    const room = client.getRoom(event.getRoomId() ?? "");
+    const relationsContainer = room?.relations?.getChildEventsForEvent(
+      event.getId() ?? "", "m.annotation", "m.reaction"
+    );
+    if (relationsContainer) {
+      const sorted = relationsContainer.getSortedAnnotationsByKey();
+      if (sorted) {
+        for (const [key, eventSet] of sorted) {
+          const userIds = Array.from(eventSet)
+            .map((e) => e.getSender())
+            .filter((id): id is string => !!id);
+          reactions.push({ key, count: eventSet.size, userIds });
+        }
       }
     }
+  } catch {
+    // Ignore — reactions are optional
   }
 
   return {
@@ -123,27 +131,31 @@ function syncRoomMembers(client: MatrixClient, roomId: string): void {
 }
 
 function updateReactionsForEvent(client: MatrixClient, roomId: string, eventId: string): void {
-  const room = client.getRoom(roomId);
-  if (!room) return;
+  try {
+    const room = client.getRoom(roomId);
+    if (!room) return;
 
-  const relationsContainer = room.relations.getChildEventsForEvent(
-    eventId, "m.annotation", "m.reaction"
-  );
+    const relationsContainer = room.relations?.getChildEventsForEvent(
+      eventId, "m.annotation", "m.reaction"
+    );
 
-  const reactions: Message["reactions"] = [];
-  if (relationsContainer) {
-    const sorted = relationsContainer.getSortedAnnotationsByKey();
-    if (sorted) {
-      for (const [key, eventSet] of sorted) {
-        const userIds = Array.from(eventSet)
-          .map((e) => e.getSender())
-          .filter((id): id is string => !!id);
-        reactions.push({ key, count: eventSet.size, userIds });
+    const reactions: Message["reactions"] = [];
+    if (relationsContainer) {
+      const sorted = relationsContainer.getSortedAnnotationsByKey();
+      if (sorted) {
+        for (const [key, eventSet] of sorted) {
+          const userIds = Array.from(eventSet)
+            .map((e) => e.getSender())
+            .filter((id): id is string => !!id);
+          reactions.push({ key, count: eventSet.size, userIds });
+        }
       }
     }
-  }
 
-  useMessageStore.getState().updateReactions(roomId, eventId, reactions);
+    useMessageStore.getState().updateReactions(roomId, eventId, reactions);
+  } catch {
+    // Ignore — reaction updates are best-effort
+  }
 }
 
 export function registerEventHandlers(client: MatrixClient): void {

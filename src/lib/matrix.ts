@@ -19,7 +19,6 @@ async function clearAllDatabases(): Promise<void> {
       dbs.map((db) => db.name ? deleteDatabase(db.name) : Promise.resolve())
     );
   } else {
-    // Fallback: delete known database names
     const knownNames = [
       "concord-matrix-store",
       "matrix-js-sdk:crypto",
@@ -29,19 +28,12 @@ async function clearAllDatabases(): Promise<void> {
   }
 }
 
-export async function initMatrixClient(
+async function createClient(
   baseUrl: string,
   accessToken: string,
   userId: string,
   deviceId: string
 ): Promise<sdk.MatrixClient> {
-  if (matrixClient) {
-    matrixClient.stopClient();
-  }
-
-  // Clear all IndexedDB databases to prevent device ID mismatch errors
-  await clearAllDatabases();
-
   const store = new sdk.IndexedDBStore({
     indexedDB: globalThis.indexedDB,
     dbName: "concord-matrix-store",
@@ -64,6 +56,27 @@ export async function initMatrixClient(
   return matrixClient;
 }
 
+export async function initMatrixClient(
+  baseUrl: string,
+  accessToken: string,
+  userId: string,
+  deviceId: string
+): Promise<sdk.MatrixClient> {
+  if (matrixClient) {
+    matrixClient.stopClient();
+  }
+
+  try {
+    // Try with existing databases (preserves crypto keys)
+    return await createClient(baseUrl, accessToken, userId, deviceId);
+  } catch (err) {
+    // Device ID mismatch or corrupt DB — wipe and retry
+    console.warn("Client init failed, clearing databases and retrying:", err);
+    await clearAllDatabases();
+    return await createClient(baseUrl, accessToken, userId, deviceId);
+  }
+}
+
 export function getMatrixClient(): sdk.MatrixClient | null {
   return matrixClient;
 }
@@ -73,7 +86,6 @@ export async function destroyMatrixClient(): Promise<void> {
     matrixClient.stopClient();
     matrixClient = null;
   }
-  await clearAllDatabases();
 }
 
 export async function loginToMatrix(
@@ -81,6 +93,9 @@ export async function loginToMatrix(
   username: string,
   password: string
 ): Promise<{ accessToken: string; userId: string; deviceId: string }> {
+  // New login = new device, clear old databases
+  await clearAllDatabases();
+
   const tempClient = sdk.createClient({
     baseUrl: homeserverUrl,
     fetchFn: tauriFetch as unknown as typeof globalThis.fetch,

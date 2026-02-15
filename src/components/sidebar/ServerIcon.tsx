@@ -31,7 +31,7 @@ export function ServerIcon({
 
       <button
         onClick={onClick}
-        className={`flex h-12 w-12 items-center justify-center overflow-hidden transition-all ${
+        className={`relative flex h-12 w-12 items-center justify-center overflow-hidden transition-all ${
           isSelected
             ? "rounded-xl bg-accent"
             : "rounded-2xl bg-bg-primary hover:rounded-xl hover:bg-accent"
@@ -44,6 +44,13 @@ export function ServerIcon({
           <span className="text-sm font-medium text-text-primary">{initials}</span>
         )}
       </button>
+
+      {/* Unread badge */}
+      {unreadCount > 0 && !isSelected && (
+        <span className="absolute -bottom-0.5 -right-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red px-1 text-[10px] font-bold text-white ring-2 ring-bg-tertiary">
+          {unreadCount > 99 ? "99+" : unreadCount}
+        </span>
+      )}
     </div>
   );
 }

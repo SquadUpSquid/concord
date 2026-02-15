@@ -1,13 +1,21 @@
 import { useRoomStore } from "@/stores/roomStore";
 import { ChannelItem } from "./ChannelItem";
 import { useAuthStore } from "@/stores/authStore";
-import { destroyMatrixClient } from "@/lib/matrix";
+import { usePresenceStore } from "@/stores/presenceStore";
+import { Avatar } from "@/components/common/Avatar";
+import { destroyMatrixClient, getMatrixClient } from "@/lib/matrix";
+import { mxcToHttp } from "@/utils/matrixHelpers";
 
 export function ChannelSidebar() {
   const rooms = useRoomStore((s) => s.rooms);
   const selectedSpaceId = useRoomStore((s) => s.selectedSpaceId);
   const selectedRoomId = useRoomStore((s) => s.selectedRoomId);
   const selectRoom = useRoomStore((s) => s.selectRoom);
+  const userId = useAuthStore((s) => s.userId);
+
+  const myPresence = usePresenceStore(
+    (s) => s.presenceByUser.get(userId ?? "")?.presence ?? "online"
+  );
 
   const channels = Array.from(rooms.values()).filter((r) => {
     if (r.isSpace) return false;
@@ -25,6 +33,14 @@ export function ChannelSidebar() {
     await destroyMatrixClient();
     useAuthStore.getState().logout();
   };
+
+  // Get user's display name and avatar from the Matrix client
+  const client = getMatrixClient();
+  const user = client?.getUser(userId ?? "");
+  const displayName = user?.displayName ?? userId ?? "User";
+  const avatarUrl = user
+    ? mxcToHttp(user.avatarUrl ?? null, client!.getHomeserverUrl())
+    : null;
 
   return (
     <div className="flex w-60 flex-col bg-bg-secondary">
@@ -55,9 +71,19 @@ export function ChannelSidebar() {
 
       {/* User section */}
       <div className="flex items-center gap-2 border-t border-bg-tertiary bg-bg-floating/50 px-2 py-2">
-        <div className="h-8 w-8 rounded-full bg-accent" />
-        <div className="flex-1 truncate text-xs text-text-secondary">
-          {useAuthStore.getState().userId}
+        <Avatar
+          name={displayName}
+          url={avatarUrl}
+          size={32}
+          presence={myPresence}
+        />
+        <div className="flex-1 overflow-hidden">
+          <p className="truncate text-sm font-medium text-text-primary">
+            {displayName}
+          </p>
+          <p className="truncate text-[10px] text-text-muted">
+            {userId}
+          </p>
         </div>
         <button
           onClick={handleLogout}

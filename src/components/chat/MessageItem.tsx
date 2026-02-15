@@ -3,8 +3,9 @@ import { formatTimestamp } from "@/utils/formatters";
 import { Avatar } from "@/components/common/Avatar";
 import { MessageContent } from "./MessageContent";
 import { ReactionBar } from "./ReactionBar";
+import { EmojiPicker } from "./EmojiPicker";
 import { getMatrixClient } from "@/lib/matrix";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 interface MessageItemProps {
   message: Message;
@@ -12,48 +13,6 @@ interface MessageItemProps {
 }
 
 const QUICK_EMOJIS = ["\u{1F44D}", "\u{2764}\uFE0F", "\u{1F602}", "\u{1F622}", "\u{1F440}", "\u{1F389}"];
-
-function ReactionPicker({
-  eventId,
-  roomId,
-  onClose,
-}: {
-  eventId: string;
-  roomId: string;
-  onClose: () => void;
-}) {
-  const client = getMatrixClient();
-
-  const handlePick = async (emoji: string) => {
-    if (!client) return;
-    onClose();
-    try {
-      await client.sendEvent(roomId, "m.reaction" as any, {
-        "m.relates_to": {
-          rel_type: "m.annotation",
-          event_id: eventId,
-          key: emoji,
-        },
-      });
-    } catch (err) {
-      console.error("Failed to send reaction:", err);
-    }
-  };
-
-  return (
-    <div className="flex gap-1 rounded-lg bg-bg-floating p-1.5 shadow-lg">
-      {QUICK_EMOJIS.map((emoji) => (
-        <button
-          key={emoji}
-          onClick={() => handlePick(emoji)}
-          className="rounded p-1 text-lg hover:bg-bg-hover"
-        >
-          {emoji}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function ReplyContext({ reply }: { reply: NonNullable<Message["replyToEvent"]> }) {
   return (
@@ -68,12 +27,44 @@ function ReplyContext({ reply }: { reply: NonNullable<Message["replyToEvent"]> }
 }
 
 export function MessageItem({ message, showHeader }: MessageItemProps) {
-  const [showPicker, setShowPicker] = useState(false);
+  const [showQuickPicker, setShowQuickPicker] = useState(false);
+  const [showFullPicker, setShowFullPicker] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
   const setReplyingTo = useMessageStore((s) => s.setReplyingTo);
 
+  // Close full picker on click outside
+  useEffect(() => {
+    if (!showFullPicker) return;
+    const handleClick = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setShowFullPicker(false);
+        setShowQuickPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showFullPicker]);
+
   const handleReply = () => {
     setReplyingTo(message);
+  };
+
+  const sendReaction = async (emoji: string) => {
+    const client = getMatrixClient();
+    if (!client) return;
+    setShowQuickPicker(false);
+    setShowFullPicker(false);
+    try {
+      await client.sendEvent(message.roomId, "m.reaction" as any, {
+        "m.relates_to": {
+          rel_type: "m.annotation",
+          event_id: message.eventId,
+          key: emoji,
+        },
+      });
+    } catch (err) {
+      console.error("Failed to send reaction:", err);
+    }
   };
 
   const actionButtons = (
@@ -89,7 +80,10 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
       </button>
       <div className="relative" ref={pickerRef}>
         <button
-          onClick={() => setShowPicker(!showPicker)}
+          onClick={() => {
+            setShowQuickPicker(!showQuickPicker);
+            setShowFullPicker(false);
+          }}
           className="rounded p-1.5 text-text-muted hover:bg-bg-hover hover:text-text-primary"
           title="Add reaction"
         >
@@ -98,12 +92,40 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
             <path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" />
           </svg>
         </button>
-        {showPicker && (
+        {showQuickPicker && !showFullPicker && (
           <div className="absolute bottom-full right-0 z-10 mb-1">
-            <ReactionPicker
-              eventId={message.eventId}
-              roomId={message.roomId}
-              onClose={() => setShowPicker(false)}
+            <div className="flex items-center gap-1 rounded-lg bg-bg-floating p-1.5 shadow-lg">
+              {QUICK_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => sendReaction(emoji)}
+                  className="rounded p-1 text-lg hover:bg-bg-hover"
+                >
+                  {emoji}
+                </button>
+              ))}
+              <div className="mx-0.5 h-6 w-px bg-bg-active" />
+              <button
+                onClick={() => setShowFullPicker(true)}
+                className="rounded p-1 text-sm text-text-muted hover:bg-bg-hover hover:text-text-primary"
+                title="More emojis"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 8v8M8 12h8" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
+        {showFullPicker && (
+          <div className="absolute bottom-full right-0 z-10 mb-1">
+            <EmojiPicker
+              onSelect={sendReaction}
+              onClose={() => {
+                setShowFullPicker(false);
+                setShowQuickPicker(false);
+              }}
             />
           </div>
         )}

@@ -1,6 +1,7 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { getMatrixClient } from "@/lib/matrix";
 import { useMessageStore } from "@/stores/messageStore";
+import { EmojiPicker } from "./EmojiPicker";
 
 interface MessageInputProps {
   roomId: string;
@@ -8,11 +9,25 @@ interface MessageInputProps {
 
 export function MessageInput({ roomId }: MessageInputProps) {
   const [message, setMessage] = useState("");
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTyping = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const emojiRef = useRef<HTMLDivElement>(null);
   const replyingTo = useMessageStore((s) => s.replyingTo);
   const setReplyingTo = useMessageStore((s) => s.setReplyingTo);
+
+  // Close emoji picker on click outside
+  useEffect(() => {
+    if (!showEmojiPicker) return;
+    const handleClick = (e: MouseEvent) => {
+      if (emojiRef.current && !emojiRef.current.contains(e.target as Node)) {
+        setShowEmojiPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showEmojiPicker]);
 
   const sendTyping = useCallback(
     (typing: boolean) => {
@@ -50,7 +65,6 @@ export function MessageInput({ roomId }: MessageInputProps) {
 
     try {
       if (replyingTo) {
-        // Send as a reply with m.relates_to
         const replyBody = `> <${replyingTo.senderId}> ${replyingTo.body}\n\n${body}`;
         const formattedReply = `<mx-reply><blockquote><a href="https://matrix.to/#/${replyingTo.roomId}/${replyingTo.eventId}">In reply to</a> <a href="https://matrix.to/#/${replyingTo.senderId}">${replyingTo.senderName}</a><br/>${replyingTo.body}</blockquote></mx-reply>${body}`;
 
@@ -90,6 +104,12 @@ export function MessageInput({ roomId }: MessageInputProps) {
     inputRef.current?.focus();
   };
 
+  const handleEmojiSelect = (emoji: string) => {
+    setMessage((prev) => prev + emoji);
+    setShowEmojiPicker(false);
+    inputRef.current?.focus();
+  };
+
   return (
     <div className="px-4 pb-6 pt-2">
       {replyingTo && (
@@ -121,6 +141,26 @@ export function MessageInput({ roomId }: MessageInputProps) {
           placeholder="Send a message..."
           className="flex-1 bg-transparent py-3 text-sm text-text-primary outline-none placeholder:text-text-muted"
         />
+        <div className="relative" ref={emojiRef}>
+          <button
+            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+            className="ml-2 rounded p-1 text-text-muted hover:text-text-primary"
+            title="Emoji"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" />
+            </svg>
+          </button>
+          {showEmojiPicker && (
+            <div className="absolute bottom-full right-0 z-10 mb-2">
+              <EmojiPicker
+                onSelect={handleEmojiSelect}
+                onClose={() => setShowEmojiPicker(false)}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

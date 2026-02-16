@@ -11,6 +11,7 @@ function makeRoom(overrides: Partial<RoomSummary> = {}): RoomSummary {
     isSpace: false,
     parentSpaceId: null,
     lastMessageTs: Date.now(),
+    channelType: "text",
     ...overrides,
   };
 }

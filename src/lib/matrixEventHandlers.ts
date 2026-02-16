@@ -1,5 +1,5 @@
 import { MatrixClient, ClientEvent, RoomEvent, RoomMemberEvent, MatrixEvent, Room } from "matrix-js-sdk";
-import { useRoomStore, RoomSummary } from "@/stores/roomStore";
+import { useRoomStore, RoomSummary, ChannelType } from "@/stores/roomStore";
 import { useMessageStore, Message } from "@/stores/messageStore";
 import { useMemberStore, Member } from "@/stores/memberStore";
 import { useTypingStore } from "@/stores/typingStore";
@@ -74,6 +74,18 @@ function buildRoomSummary(room: Room, client: MatrixClient): RoomSummary {
   const lastEvent = room.timeline[room.timeline.length - 1];
   const isSpace = room.isSpaceRoom();
 
+  // Detect channel type from custom state event
+  let channelType: ChannelType = "text";
+  try {
+    const typeEvent = room.currentState.getStateEvents("concord.channel_type", "");
+    if (typeEvent) {
+      const ct = typeEvent.getContent()?.type;
+      if (ct === "voice") channelType = "voice";
+    }
+  } catch {
+    // Default to text
+  }
+
   return {
     roomId: room.roomId,
     name: room.name,
@@ -86,6 +98,7 @@ function buildRoomSummary(room: Room, client: MatrixClient): RoomSummary {
     isSpace,
     parentSpaceId: null,
     lastMessageTs: lastEvent?.getTs() ?? 0,
+    channelType,
   };
 }
 

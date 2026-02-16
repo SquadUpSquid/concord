@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useRoomStore } from "@/stores/roomStore";
+import { useUiStore } from "@/stores/uiStore";
 import { ChannelItem } from "./ChannelItem";
 import { useAuthStore } from "@/stores/authStore";
 import { usePresenceStore } from "@/stores/presenceStore";
@@ -12,6 +14,10 @@ export function ChannelSidebar() {
   const selectedRoomId = useRoomStore((s) => s.selectedRoomId);
   const selectRoom = useRoomStore((s) => s.selectRoom);
   const userId = useAuthStore((s) => s.userId);
+  const openModal = useUiStore((s) => s.openModal);
+
+  const [textCollapsed, setTextCollapsed] = useState(false);
+  const [voiceCollapsed, setVoiceCollapsed] = useState(false);
 
   const myPresence = usePresenceStore(
     (s) => s.presenceByUser.get(userId ?? "")?.presence ?? "online"
@@ -23,7 +29,13 @@ export function ChannelSidebar() {
     return r.parentSpaceId === selectedSpaceId;
   });
 
-  channels.sort((a, b) => a.name.localeCompare(b.name));
+  const textChannels = channels
+    .filter((ch) => ch.channelType === "text")
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const voiceChannels = channels
+    .filter((ch) => ch.channelType === "voice")
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const spaceName = selectedSpaceId
     ? rooms.get(selectedSpaceId)?.name ?? "Space"
@@ -46,7 +58,7 @@ export function ChannelSidebar() {
     <div className="flex w-60 flex-col bg-bg-secondary">
       {/* Header */}
       <div className="flex h-12 items-center border-b border-bg-tertiary px-4 shadow-sm">
-        <h2 className="truncate text-sm font-semibold text-text-primary">
+        <h2 className="flex-1 truncate text-sm font-semibold text-text-primary">
           {spaceName}
         </h2>
       </div>
@@ -58,15 +70,112 @@ export function ChannelSidebar() {
             No channels
           </p>
         )}
-        {channels.map((ch) => (
-          <ChannelItem
-            key={ch.roomId}
-            name={ch.name}
-            unreadCount={ch.unreadCount}
-            isSelected={selectedRoomId === ch.roomId}
-            onClick={() => selectRoom(ch.roomId)}
-          />
-        ))}
+
+        {/* Text Channels Section */}
+        {(textChannels.length > 0 || channels.length > 0) && (
+          <div className="mb-1">
+            <button
+              onClick={() => setTextCollapsed(!textCollapsed)}
+              className="group flex w-full items-center gap-0.5 px-1 py-1.5"
+            >
+              <svg
+                className={`h-3 w-3 text-text-muted transition-transform ${
+                  textCollapsed ? "-rotate-90" : ""
+                }`}
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M7 10l5 5 5-5z" />
+              </svg>
+              <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary">
+                Text Channels
+              </span>
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openModal("createRoom");
+                }}
+                className="rounded p-0.5 text-text-muted opacity-0 hover:text-text-primary group-hover:opacity-100"
+                title="Create channel"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" strokeWidth="2">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </span>
+            </button>
+            {!textCollapsed && (
+              <div>
+                {textChannels.map((ch) => (
+                  <ChannelItem
+                    key={ch.roomId}
+                    roomId={ch.roomId}
+                    name={ch.name}
+                    channelType={ch.channelType}
+                    unreadCount={ch.unreadCount}
+                    isSelected={selectedRoomId === ch.roomId}
+                    onClick={() => selectRoom(ch.roomId)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Voice Channels Section */}
+        {(voiceChannels.length > 0 || channels.length > 0) && (
+          <div className="mb-1">
+            <button
+              onClick={() => setVoiceCollapsed(!voiceCollapsed)}
+              className="group flex w-full items-center gap-0.5 px-1 py-1.5"
+            >
+              <svg
+                className={`h-3 w-3 text-text-muted transition-transform ${
+                  voiceCollapsed ? "-rotate-90" : ""
+                }`}
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M7 10l5 5 5-5z" />
+              </svg>
+              <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary">
+                Voice Channels
+              </span>
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openModal("createRoom");
+                }}
+                className="rounded p-0.5 text-text-muted opacity-0 hover:text-text-primary group-hover:opacity-100"
+                title="Create channel"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" strokeWidth="2">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </span>
+            </button>
+            {!voiceCollapsed && (
+              <div>
+                {voiceChannels.length === 0 ? (
+                  <p className="px-3 py-1 text-xs text-text-muted">No voice channels</p>
+                ) : (
+                  voiceChannels.map((ch) => (
+                    <ChannelItem
+                      key={ch.roomId}
+                      roomId={ch.roomId}
+                      name={ch.name}
+                      channelType={ch.channelType}
+                      unreadCount={ch.unreadCount}
+                      isSelected={selectedRoomId === ch.roomId}
+                      onClick={() => selectRoom(ch.roomId)}
+                    />
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* User section */}

@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+export type ChannelType = "text" | "voice";
+
 export interface RoomSummary {
   roomId: string;
   name: string;
@@ -9,6 +11,7 @@ export interface RoomSummary {
   isSpace: boolean;
   parentSpaceId: string | null;
   lastMessageTs: number;
+  channelType: ChannelType;
 }
 
 interface RoomState {

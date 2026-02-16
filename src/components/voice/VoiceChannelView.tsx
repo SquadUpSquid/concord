@@ -13,11 +13,14 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
   const connectionState = useCallStore((s) => s.connectionState);
   const activeCallRoomId = useCallStore((s) => s.activeCallRoomId);
   const participants = useCallStore((s) => s.participants);
+  const error = useCallStore((s) => s.error);
   const joinCall = useCallStore((s) => s.joinCall);
+  const clearError = useCallStore((s) => s.clearError);
   const userId = useAuthStore((s) => s.userId);
 
   const isInThisCall = activeCallRoomId === roomId && connectionState === "connected";
   const isConnecting = activeCallRoomId === roomId && connectionState === "connecting";
+  const hasError = activeCallRoomId === roomId && !!error;
   const participantList = Array.from(participants.values());
 
   // Separate local user from remote participants
@@ -49,7 +52,44 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
 
       {/* Main area */}
       <div className="flex flex-1 flex-col items-center justify-center p-6">
-        {!isInThisCall && !isConnecting ? (
+        {hasError ? (
+          /* Error state */
+          <div className="flex flex-col items-center gap-5">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-red/10">
+              <svg className="h-10 w-10 text-red" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 8v4M12 16h.01" />
+              </svg>
+            </div>
+            <div className="max-w-sm text-center">
+              <h2 className="text-lg font-semibold text-text-primary">
+                Failed to connect
+              </h2>
+              <p className="mt-2 text-sm text-text-muted">
+                {error}
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  clearError();
+                }}
+                className="rounded-md bg-bg-active px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+              >
+                Dismiss
+              </button>
+              <button
+                onClick={() => {
+                  clearError();
+                  joinCall(roomId);
+                }}
+                className="rounded-md bg-green px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green/80"
+              >
+                Try Again
+              </button>
+            </div>
+          </div>
+        ) : !isInThisCall && !isConnecting ? (
           /* Not in call - show join prompt */
           <div className="flex flex-col items-center gap-6">
             <div className="flex h-24 w-24 items-center justify-center rounded-full bg-bg-secondary">

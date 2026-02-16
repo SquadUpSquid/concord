@@ -27,6 +27,7 @@ export type CallConnectionState = "disconnected" | "connecting" | "connected";
 interface CallState {
   activeCallRoomId: string | null;
   connectionState: CallConnectionState;
+  error: string | null;
   isMicMuted: boolean;
   isVideoMuted: boolean;
   isDeafened: boolean;
@@ -45,6 +46,7 @@ interface CallState {
   setActiveSpeaker: (userId: string | null) => void;
   setConnectionState: (state: CallConnectionState) => void;
   setRoomParticipants: (roomId: string, participants: CallParticipant[]) => void;
+  clearError: () => void;
   _reset: () => void;
 }
 
@@ -196,6 +198,7 @@ function detachGroupCallListeners(groupCall: GroupCall): void {
 const initialState = {
   activeCallRoomId: null,
   connectionState: "disconnected" as CallConnectionState,
+  error: null as string | null,
   isMicMuted: false,
   isVideoMuted: true,
   isDeafened: false,
@@ -205,23 +208,69 @@ const initialState = {
   participantsByRoom: new Map<string, CallParticipant[]>(),
 };
 
+async function checkMediaPermissions(): Promise<void> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error(
+      "Media devices not available. Your browser or environment does not support microphone access."
+    );
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Release the stream immediately -- we just needed to check permissions
+    for (const track of stream.getTracks()) {
+      track.stop();
+    }
+  } catch (err: unknown) {
+    if (err instanceof DOMException) {
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        throw new Error(
+          "Microphone permission denied. Please allow microphone access and try again."
+        );
+      }
+      if (err.name === "NotFoundError") {
+        throw new Error(
+          "No microphone found. Please connect a microphone and try again."
+        );
+      }
+      if (err.name === "NotReadableError" || err.name === "AbortError") {
+        throw new Error(
+          "Could not access microphone. It may be in use by another application."
+        );
+      }
+    }
+    throw new Error(
+      `Microphone access failed: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+}
+
 export const useCallStore = create<CallState>()((set, get) => ({
   ...initialState,
 
   joinCall: async (roomId: string) => {
     const client = getMatrixClient();
-    if (!client) return;
+    if (!client) {
+      set({ error: "Not connected to Matrix. Please log in again." });
+      return;
+    }
 
     // Leave current call if in one
     if (get().activeCallRoomId) {
       get().leaveCall();
     }
 
-    set({ connectionState: "connecting", activeCallRoomId: roomId });
+    set({ connectionState: "connecting", activeCallRoomId: roomId, error: null });
 
     try {
+      // Check microphone permissions before attempting to join
+      await checkMediaPermissions();
+
       // Wait for room state to be ready
-      await client.groupCallEventHandler?.waitUntilRoomReadyForGroupCalls(roomId);
+      if (!client.groupCallEventHandler) {
+        throw new Error("Group call support not initialized. Please restart the app.");
+      }
+      await client.groupCallEventHandler.waitUntilRoomReadyForGroupCalls(roomId);
 
       // Get existing group call or create one
       let groupCall = client.getGroupCallForRoom(roomId);
@@ -243,14 +292,19 @@ export const useCallStore = create<CallState>()((set, get) => ({
       // Voice-first: mute video by default
       await groupCall.setLocalVideoMuted(true);
 
-      set({ connectionState: "connected", isMicMuted: false, isVideoMuted: true });
+      set({ connectionState: "connected", isMicMuted: false, isVideoMuted: true, error: null });
     } catch (err) {
       console.error("Failed to join call:", err);
       if (activeGroupCall) {
         detachGroupCallListeners(activeGroupCall);
         activeGroupCall = null;
       }
-      set({ ...initialState });
+      const errorMsg = err instanceof Error ? err.message : "Failed to join voice channel. Please try again.";
+      set({
+        ...initialState,
+        activeCallRoomId: roomId,
+        error: errorMsg,
+      });
     }
   },
 
@@ -313,6 +367,8 @@ export const useCallStore = create<CallState>()((set, get) => ({
     }
     set({ participantsByRoom: map });
   },
+
+  clearError: () => set({ error: null }),
 
   _reset: () => {
     const roomParticipants = get().participantsByRoom;

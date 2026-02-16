@@ -44,10 +44,6 @@ export function ChannelItem({
 
   const handleClick = () => {
     onClick();
-    // Voice channels also join the call when clicked (if not already in it)
-    if (channelType === "voice" && activeCallRoomId !== roomId) {
-      useCallStore.getState().joinCall(roomId);
-    }
   };
 
   return (

@@ -39,12 +39,12 @@ export function CreateRoomModal() {
         });
       }
 
-      // Tag the channel type
-      initialState.push({
-        type: "concord.channel_type",
-        state_key: "",
-        content: { type: channelType },
-      });
+      // Use Element's standard room type for voice/video rooms
+      // io.element.video is recognized by Element and other Matrix clients
+      const creationContent: Record<string, unknown> = {};
+      if (channelType === "voice") {
+        creationContent.type = "io.element.video";
+      }
 
       const { room_id } = await client.createRoom({
         name: name.trim(),
@@ -52,6 +52,7 @@ export function CreateRoomModal() {
         visibility: isPublic ? Visibility.Public : Visibility.Private,
         preset: isPublic ? Preset.PublicChat : Preset.PrivateChat,
         initial_state: initialState,
+        creation_content: Object.keys(creationContent).length > 0 ? creationContent : undefined,
       });
 
       // If a space is selected, add room as child of that space

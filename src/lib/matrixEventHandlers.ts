@@ -74,17 +74,12 @@ function buildRoomSummary(room: Room, client: MatrixClient): RoomSummary {
   const lastEvent = room.timeline[room.timeline.length - 1];
   const isSpace = room.isSpaceRoom();
 
-  // Detect channel type from custom state event
-  let channelType: ChannelType = "text";
-  try {
-    const typeEvent = room.currentState.getStateEvents("concord.channel_type", "");
-    if (typeEvent) {
-      const ct = typeEvent.getContent()?.type;
-      if (ct === "voice") channelType = "voice";
-    }
-  } catch {
-    // Default to text
-  }
+  // Detect channel type from m.room.create type field (Element standard)
+  // io.element.video = Element video room, org.matrix.msc3417.call = MSC3417 call room
+  const channelType: ChannelType =
+    (room as any).isElementVideoRoom?.() || (room as any).isCallRoom?.()
+      ? "voice"
+      : "text";
 
   return {
     roomId: room.roomId,

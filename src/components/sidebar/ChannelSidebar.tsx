@@ -1,4 +1,5 @@
 import { useRoomStore } from "@/stores/roomStore";
+import { useUiStore } from "@/stores/uiStore";
 import { ChannelItem } from "./ChannelItem";
 import { useAuthStore } from "@/stores/authStore";
 import { usePresenceStore } from "@/stores/presenceStore";
@@ -12,6 +13,7 @@ export function ChannelSidebar() {
   const selectedRoomId = useRoomStore((s) => s.selectedRoomId);
   const selectRoom = useRoomStore((s) => s.selectRoom);
   const userId = useAuthStore((s) => s.userId);
+  const openModal = useUiStore((s) => s.openModal);
 
   const myPresence = usePresenceStore(
     (s) => s.presenceByUser.get(userId ?? "")?.presence ?? "online"
@@ -46,9 +48,19 @@ export function ChannelSidebar() {
     <div className="flex w-60 flex-col bg-bg-secondary">
       {/* Header */}
       <div className="flex h-12 items-center border-b border-bg-tertiary px-4 shadow-sm">
-        <h2 className="truncate text-sm font-semibold text-text-primary">
+        <h2 className="flex-1 truncate text-sm font-semibold text-text-primary">
           {spaceName}
         </h2>
+        <button
+          onClick={() => openModal("createRoom")}
+          className="rounded p-1 text-text-muted hover:text-text-primary"
+          title="Create channel"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" strokeWidth="2">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
       </div>
 
       {/* Channel list */}
@@ -61,6 +73,7 @@ export function ChannelSidebar() {
         {channels.map((ch) => (
           <ChannelItem
             key={ch.roomId}
+            roomId={ch.roomId}
             name={ch.name}
             unreadCount={ch.unreadCount}
             isSelected={selectedRoomId === ch.roomId}

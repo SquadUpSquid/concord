@@ -4,6 +4,8 @@ import { ChatView } from "@/components/chat/ChatView";
 import { MemberSidebar } from "@/components/members/MemberSidebar";
 import { TitleBar } from "./TitleBar";
 import { useUiStore } from "@/stores/uiStore";
+import { ModalRoot } from "@/components/modals/ModalRoot";
+import { RoomContextMenu } from "@/components/sidebar/RoomContextMenu";
 
 export function AppLayout() {
   const showMembers = useUiStore((s) => s.showMemberSidebar);
@@ -17,6 +19,8 @@ export function AppLayout() {
         <ChatView />
         {showMembers && <MemberSidebar />}
       </div>
+      <ModalRoot />
+      <RoomContextMenu />
     </div>
   );
 }

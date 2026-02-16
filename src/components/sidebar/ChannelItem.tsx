@@ -1,4 +1,7 @@
+import { useUiStore } from "@/stores/uiStore";
+
 interface ChannelItemProps {
+  roomId: string;
   name: string;
   unreadCount: number;
   isSelected: boolean;
@@ -6,16 +9,24 @@ interface ChannelItemProps {
 }
 
 export function ChannelItem({
+  roomId,
   name,
   unreadCount,
   isSelected,
   onClick,
 }: ChannelItemProps) {
+  const openContextMenu = useUiStore((s) => s.openContextMenu);
   const hasUnread = unreadCount > 0;
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    openContextMenu(roomId, e.clientX, e.clientY);
+  };
 
   return (
     <button
       onClick={onClick}
+      onContextMenu={handleContextMenu}
       className={`flex w-full items-center gap-1.5 rounded-sm px-2 py-1.5 text-left transition-colors ${
         isSelected
           ? "bg-bg-active text-text-primary"

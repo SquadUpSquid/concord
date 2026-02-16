@@ -1,4 +1,5 @@
 import { useRoomStore } from "@/stores/roomStore";
+import { useUiStore } from "@/stores/uiStore";
 import { ServerIcon } from "./ServerIcon";
 import { useMemo } from "react";
 
@@ -6,6 +7,7 @@ export function ServerSidebar() {
   const rooms = useRoomStore((s) => s.rooms);
   const selectedSpaceId = useRoomStore((s) => s.selectedSpaceId);
   const selectSpace = useRoomStore((s) => s.selectSpace);
+  const openModal = useUiStore((s) => s.openModal);
 
   const spaces = Array.from(rooms.values()).filter((r) => r.isSpace);
 
@@ -77,6 +79,18 @@ export function ServerSidebar() {
           onClick={() => selectSpace(space.roomId)}
         />
       ))}
+
+      {/* Create space button */}
+      <button
+        onClick={() => openModal("createSpace")}
+        className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-primary text-green transition-all hover:rounded-xl hover:bg-green hover:text-white"
+        title="Create a space"
+      >
+        <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" strokeWidth="2">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </button>
     </div>
   );
 }

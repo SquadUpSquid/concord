@@ -259,7 +259,14 @@ function applySyncReady(client: MatrixClient, hasInitiallySyncedRef: { current: 
   updateTitleWithUnread();
 }
 
+let _registeredClient: MatrixClient | null = null;
+
 export function registerEventHandlers(client: MatrixClient): void {
+  // Prevent registering duplicate listeners on the same client instance
+  // (can happen when React StrictMode double-fires effects).
+  if (_registeredClient === client) return;
+  _registeredClient = client;
+
   const hasInitiallySyncedRef = { current: false };
 
   client.on(ClientEvent.Sync, (state) => {

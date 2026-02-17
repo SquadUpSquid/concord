@@ -48,7 +48,9 @@ async function createClient(
     dbName: "concord-matrix-store",
   });
 
-  matrixClient = sdk.createClient({
+  // Use a local variable for all async operations so concurrent calls
+  // (e.g. from React StrictMode) don't interfere with each other.
+  const client = sdk.createClient({
     baseUrl,
     accessToken,
     userId,
@@ -62,15 +64,20 @@ async function createClient(
   });
 
   await store.startup();
-  await matrixClient.initRustCrypto();
+  await client.initRustCrypto();
 
   // startClient() internally creates CallEventHandler + GroupCallEventHandler
   // and starts them after initial sync completes (if WebRTC is supported).
-  await matrixClient.startClient({ initialSyncLimit: 20 });
+  await client.startClient({ initialSyncLimit: 20 });
 
+  // Only publish the client after it is fully initialized.
+  matrixClient = client;
   emitClientChanged();
-  return matrixClient;
+  return client;
 }
+
+/** In-flight init promise — prevents duplicate concurrent initialization. */
+let _initPromise: Promise<sdk.MatrixClient> | null = null;
 
 export async function initMatrixClient(
   baseUrl: string,
@@ -78,19 +85,31 @@ export async function initMatrixClient(
   userId: string,
   deviceId: string
 ): Promise<sdk.MatrixClient> {
+  // If an init is already in progress, return the same promise so React
+  // StrictMode double-firing the effect doesn't start two parallel inits.
+  if (_initPromise) return _initPromise;
+
   if (matrixClient) {
     matrixClient.stopClient();
+    matrixClient = null;
+    emitClientChanged();
   }
 
-  try {
-    // Try with existing databases (preserves crypto keys)
-    return await createClient(baseUrl, accessToken, userId, deviceId);
-  } catch (err) {
-    // Device ID mismatch or corrupt DB — wipe and retry
-    console.warn("Client init failed, clearing databases and retrying:", err);
-    await clearAllDatabases();
-    return await createClient(baseUrl, accessToken, userId, deviceId);
-  }
+  _initPromise = (async () => {
+    try {
+      // Try with existing databases (preserves crypto keys)
+      return await createClient(baseUrl, accessToken, userId, deviceId);
+    } catch (err) {
+      // Device ID mismatch or corrupt DB — wipe and retry
+      console.warn("Client init failed, clearing databases and retrying:", err);
+      await clearAllDatabases();
+      return await createClient(baseUrl, accessToken, userId, deviceId);
+    } finally {
+      _initPromise = null;
+    }
+  })();
+
+  return _initPromise;
 }
 
 export function getMatrixClient(): sdk.MatrixClient | null {

@@ -252,7 +252,7 @@ function updateReactionsForEvent(client: MatrixClient, roomId: string, eventId: 
 
 function applySyncReady(client: MatrixClient, hasInitiallySyncedRef: { current: boolean }) {
   useRoomStore.getState().setSyncState("PREPARED");
-  if (!hasInitiallySyncedRef.current) {
+  if (!hasInitiallySyncedRef.current || useRoomStore.getState().rooms.size === 0) {
     hasInitiallySyncedRef.current = true;
     syncRoomList(client);
   }

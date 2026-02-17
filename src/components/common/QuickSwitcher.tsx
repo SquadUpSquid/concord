@@ -19,8 +19,11 @@ export function QuickSwitcher({ onClose }: QuickSwitcherProps) {
     return Array.from(rooms.values()).filter((r) => {
       if (r.isSpace || r.membership !== "join") return false;
       const required = r.minPowerLevelToView ?? 0;
-      const myLevel = r.myPowerLevel ?? 0;
-      return myLevel >= required;
+      if (required > 0) {
+        const myLevel = r.myPowerLevel ?? 0;
+        if (myLevel < required) return false;
+      }
+      return true;
     });
   }, [rooms]);
 

@@ -43,9 +43,14 @@ export function ChannelSidebar() {
     if (r.membership !== "join") return false;
     if (selectedSpaceId === null) return r.parentSpaceId === null;
     if (r.parentSpaceId !== selectedSpaceId) return false;
+    // Only enforce access check when an explicit restriction was set (> 0).
+    // Default of 0 means "everyone", so skip the check entirely for that.
     const required = r.minPowerLevelToView ?? 0;
-    const myLevel = r.myPowerLevel ?? 0;
-    return myLevel >= required;
+    if (required > 0) {
+      const myLevel = r.myPowerLevel ?? 0;
+      if (myLevel < required) return false;
+    }
+    return true;
   });
 
   const textChannelsRaw = channels.filter((ch) => ch.channelType === "text");

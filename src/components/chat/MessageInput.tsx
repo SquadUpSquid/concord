@@ -1,7 +1,9 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { getMatrixClient } from "@/lib/matrix";
 import { useMessageStore } from "@/stores/messageStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { EmojiPicker } from "./EmojiPicker";
+import { searchEmojis, type EmojiEntry } from "@/lib/emojiData";
 
 interface MessageInputProps {
   roomId: string;
@@ -10,12 +12,48 @@ interface MessageInputProps {
 export function MessageInput({ roomId }: MessageInputProps) {
   const [message, setMessage] = useState("");
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTyping = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const emojiRef = useRef<HTMLDivElement>(null);
+  const [emojiAutocomplete, setEmojiAutocomplete] = useState<EmojiEntry[]>([]);
+  const [emojiSelectedIdx, setEmojiSelectedIdx] = useState(0);
   const replyingTo = useMessageStore((s) => s.replyingTo);
   const setReplyingTo = useMessageStore((s) => s.setReplyingTo);
+  const editingMessage = useMessageStore((s) => s.editingMessage);
+  const setEditingMessage = useMessageStore((s) => s.setEditingMessage);
+
+  // Emoji autocomplete: detect ":text" at end of input
+  const emojiQuery = useMemo(() => {
+    const match = message.match(/:([a-z0-9_]{2,})$/i);
+    return match ? match[1] : null;
+  }, [message]);
+
+  useEffect(() => {
+    if (emojiQuery) {
+      const results = searchEmojis(emojiQuery);
+      setEmojiAutocomplete(results);
+      setEmojiSelectedIdx(0);
+    } else {
+      setEmojiAutocomplete([]);
+    }
+  }, [emojiQuery]);
+
+  const applyEmoji = (emoji: string) => {
+    setMessage((prev) => prev.replace(/:([a-z0-9_]{2,})$/i, emoji));
+    setEmojiAutocomplete([]);
+    inputRef.current?.focus();
+  };
+
+  // Populate input when entering edit mode
+  useEffect(() => {
+    if (editingMessage) {
+      setMessage(editingMessage.body);
+      inputRef.current?.focus();
+    }
+  }, [editingMessage]);
 
   // Close emoji picker on click outside
   useEffect(() => {
@@ -29,24 +67,27 @@ export function MessageInput({ roomId }: MessageInputProps) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showEmojiPicker]);
 
+  const typingEnabled = useSettingsStore((s) => s.sendTypingIndicators);
+
   const sendTyping = useCallback(
     (typing: boolean) => {
+      if (!typingEnabled) return;
       const client = getMatrixClient();
       if (!client || isTyping.current === typing) return;
       isTyping.current = typing;
       client.sendTyping(roomId, typing, typing ? 30000 : 0).catch(() => {});
     },
-    [roomId]
+    [roomId, typingEnabled]
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setMessage(e.target.value);
 
-    if (e.target.value.length > 0) {
+    if (!editingMessage && e.target.value.length > 0) {
       sendTyping(true);
       if (typingTimeout.current) clearTimeout(typingTimeout.current);
       typingTimeout.current = setTimeout(() => sendTyping(false), 5000);
-    } else {
+    } else if (!editingMessage) {
       sendTyping(false);
       if (typingTimeout.current) clearTimeout(typingTimeout.current);
     }
@@ -64,7 +105,22 @@ export function MessageInput({ roomId }: MessageInputProps) {
     if (typingTimeout.current) clearTimeout(typingTimeout.current);
 
     try {
-      if (replyingTo) {
+      if (editingMessage) {
+        // Send edit via m.replace relation
+        await client.sendEvent(roomId, "m.room.message" as any, {
+          msgtype: "m.text",
+          body: `* ${body}`,
+          "m.new_content": {
+            msgtype: "m.text",
+            body,
+          },
+          "m.relates_to": {
+            rel_type: "m.replace",
+            event_id: editingMessage.eventId,
+          },
+        });
+        setEditingMessage(null);
+      } else if (replyingTo) {
         const replyBody = `> <${replyingTo.senderId}> ${replyingTo.body}\n\n${body}`;
         const formattedReply = `<mx-reply><blockquote><a href="https://matrix.to/#/${replyingTo.roomId}/${replyingTo.eventId}">In reply to</a> <a href="https://matrix.to/#/${replyingTo.senderId}">${replyingTo.senderName}</a><br/>${replyingTo.body}</blockquote></mx-reply>${body}`;
 
@@ -89,18 +145,106 @@ export function MessageInput({ roomId }: MessageInputProps) {
     }
   };
 
+  const handleFileUpload = async (file: File) => {
+    const client = getMatrixClient();
+    if (!client) return;
+
+    setIsUploading(true);
+    try {
+      const uploadResp = await client.uploadContent(file, { type: file.type });
+      const mxcUrl = uploadResp.content_uri;
+
+      const isImage = file.type.startsWith("image/");
+      const isVideo = file.type.startsWith("video/");
+      const isAudio = file.type.startsWith("audio/");
+
+      let msgtype = "m.file";
+      if (isImage) msgtype = "m.image";
+      else if (isVideo) msgtype = "m.video";
+      else if (isAudio) msgtype = "m.audio";
+
+      const content: Record<string, unknown> = {
+        msgtype,
+        body: file.name,
+        url: mxcUrl,
+        info: {
+          mimetype: file.type,
+          size: file.size,
+        },
+      };
+
+      if (isImage) {
+        const img = await loadImageDimensions(file);
+        (content.info as Record<string, unknown>).w = img.width;
+        (content.info as Record<string, unknown>).h = img.height;
+      }
+
+      await client.sendEvent(roomId, "m.room.message" as any, content);
+    } catch (err) {
+      console.error("Failed to upload file:", err);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleFileUpload(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) handleFileUpload(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Emoji autocomplete navigation
+    if (emojiAutocomplete.length > 0) {
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setEmojiSelectedIdx((i) => (i > 0 ? i - 1 : emojiAutocomplete.length - 1));
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setEmojiSelectedIdx((i) => (i < emojiAutocomplete.length - 1 ? i + 1 : 0));
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        applyEmoji(emojiAutocomplete[emojiSelectedIdx].emoji);
+        return;
+      }
+      if (e.key === "Escape") {
+        setEmojiAutocomplete([]);
+        return;
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
-    if (e.key === "Escape" && replyingTo) {
-      setReplyingTo(null);
+    if (e.key === "Escape") {
+      if (editingMessage) setEditingMessage(null);
+      else if (replyingTo) setReplyingTo(null);
     }
   };
 
   const handleCancelReply = () => {
     setReplyingTo(null);
+    inputRef.current?.focus();
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessage(null);
+    setMessage("");
     inputRef.current?.focus();
   };
 
@@ -110,8 +254,17 @@ export function MessageInput({ roomId }: MessageInputProps) {
     inputRef.current?.focus();
   };
 
+  const hasContext = !!replyingTo || !!editingMessage;
+
   return (
-    <div className="px-4 pb-6 pt-2">
+    <div className="px-4 pb-6 pt-2" onDrop={handleDrop} onDragOver={handleDragOver}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
+
       {replyingTo && (
         <div className="mb-1 flex items-center gap-2 rounded-t-lg bg-bg-secondary px-4 py-2 text-xs">
           <span className="text-text-muted">Replying to</span>
@@ -131,14 +284,68 @@ export function MessageInput({ roomId }: MessageInputProps) {
           </button>
         </div>
       )}
-      <div className={`flex items-center bg-bg-input px-4 ${replyingTo ? "rounded-b-lg" : "rounded-lg"}`}>
+
+      {editingMessage && (
+        <div className="mb-1 flex items-center gap-2 rounded-t-lg bg-accent/10 px-4 py-2 text-xs">
+          <svg className="h-3.5 w-3.5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+          <span className="text-accent">Editing message</span>
+          <span className="flex-1 truncate text-text-muted">
+            {editingMessage.body}
+          </span>
+          <button
+            onClick={handleCancelEdit}
+            className="text-text-muted hover:text-text-primary"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* Emoji autocomplete dropdown */}
+      {emojiAutocomplete.length > 0 && (
+        <div className={`mb-1 overflow-hidden bg-bg-floating shadow-lg ${hasContext ? "" : "rounded-t-lg"}`}>
+          {emojiAutocomplete.map((entry, i) => (
+            <button
+              key={entry.name}
+              onClick={() => applyEmoji(entry.emoji)}
+              className={`flex w-full items-center gap-3 px-4 py-1.5 text-left text-sm ${
+                i === emojiSelectedIdx ? "bg-accent/20 text-text-primary" : "text-text-secondary hover:bg-bg-hover"
+              }`}
+            >
+              <span className="text-lg">{entry.emoji}</span>
+              <span>:{entry.name}:</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className={`flex items-center bg-bg-input px-4 ${hasContext ? "rounded-b-lg" : emojiAutocomplete.length > 0 ? "rounded-b-lg" : "rounded-lg"}`}>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="mr-2 rounded p-1 text-text-muted hover:text-text-primary"
+          title="Upload file"
+          disabled={isUploading}
+        >
+          {isUploading ? (
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-text-muted border-t-accent" />
+          ) : (
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          )}
+        </button>
         <input
           ref={inputRef}
           type="text"
           value={message}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder="Send a message..."
+          placeholder={editingMessage ? "Edit your message..." : "Send a message..."}
           className="flex-1 bg-transparent py-3 text-sm text-text-primary outline-none placeholder:text-text-muted"
         />
         <div className="relative" ref={emojiRef}>
@@ -164,4 +371,16 @@ export function MessageInput({ roomId }: MessageInputProps) {
       </div>
     </div>
   );
+}
+
+function loadImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      URL.revokeObjectURL(img.src);
+    };
+    img.onerror = () => resolve({ width: 0, height: 0 });
+    img.src = URL.createObjectURL(file);
+  });
 }

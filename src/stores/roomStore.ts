@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 export type ChannelType = "text" | "voice";
+export type RoomMembership = "join" | "invite" | "leave";
 
 export interface RoomSummary {
   roomId: string;
@@ -12,6 +13,9 @@ export interface RoomSummary {
   parentSpaceId: string | null;
   lastMessageTs: number;
   channelType: ChannelType;
+  membership: RoomMembership;
+  isDm: boolean;
+  inviteSender: string | null;
 }
 
 interface RoomState {
@@ -22,6 +26,7 @@ interface RoomState {
 
   setRooms: (rooms: Map<string, RoomSummary>) => void;
   updateRoom: (roomId: string, update: Partial<RoomSummary>) => void;
+  removeRoom: (roomId: string) => void;
   selectSpace: (spaceId: string | null) => void;
   selectRoom: (roomId: string | null) => void;
   setSyncState: (state: RoomState["syncState"]) => void;
@@ -42,6 +47,14 @@ export const useRoomStore = create<RoomState>()((set, get) => ({
       rooms.set(roomId, { ...existing, ...update });
       set({ rooms });
     }
+  },
+
+  removeRoom: (roomId) => {
+    const rooms = new Map(get().rooms);
+    rooms.delete(roomId);
+    const patch: Partial<RoomState> = { rooms };
+    if (get().selectedRoomId === roomId) patch.selectedRoomId = null;
+    set(patch);
   },
 
   selectSpace: (spaceId) => set({ selectedSpaceId: spaceId, selectedRoomId: null }),

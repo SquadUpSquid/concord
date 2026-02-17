@@ -5,6 +5,9 @@ export type ModalType =
   | "createSpace"
   | "roomSettings"
   | "leaveRoom"
+  | "createDm"
+  | "userSettings"
+  | "settings"
   | null;
 
 interface UiState {

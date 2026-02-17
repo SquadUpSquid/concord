@@ -19,7 +19,34 @@ export function ReactionBar({ reactions, eventId, roomId }: ReactionBarProps) {
       (r) => r.key === key && r.userIds.includes(myUserId)
     );
     if (existing) {
-      // TODO: redact the reaction event to "unreact"
+      // Remove own reaction by finding and redacting the reaction event
+      try {
+        const room = client.getRoom(roomId);
+        if (!room) return;
+        const relationsContainer = room.relations?.getChildEventsForEvent(
+          eventId, "m.annotation", "m.reaction"
+        );
+        if (relationsContainer) {
+          const sorted = relationsContainer.getSortedAnnotationsByKey();
+          if (sorted) {
+            for (const [annotationKey, eventSet] of sorted) {
+              if (annotationKey === key) {
+                for (const reactionEvent of eventSet) {
+                  if (reactionEvent.getSender() === myUserId) {
+                    const reactionEventId = reactionEvent.getId();
+                    if (reactionEventId) {
+                      await client.redactEvent(roomId, reactionEventId);
+                    }
+                    return;
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to remove reaction:", err);
+      }
       return;
     }
     try {

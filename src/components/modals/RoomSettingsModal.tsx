@@ -1,9 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Modal } from "@/components/common/Modal";
+import { Avatar } from "@/components/common/Avatar";
 import { useUiStore } from "@/stores/uiStore";
 import { useRoomStore } from "@/stores/roomStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useMemberStore } from "@/stores/memberStore";
 import { getMatrixClient } from "@/lib/matrix";
+import { mxcToHttp } from "@/utils/matrixHelpers";
+
+type Tab = "overview" | "members";
 
 export function RoomSettingsModal() {
   const closeModal = useUiStore((s) => s.closeModal);
@@ -13,47 +18,129 @@ export function RoomSettingsModal() {
   const userId = useAuthStore((s) => s.userId);
 
   const room = selectedRoomId ? rooms.get(selectedRoomId) : null;
+  const [tab, setTab] = useState<Tab>("overview");
 
-  const [name, setName] = useState(room?.name ?? "");
-  const [topic, setTopic] = useState(room?.topic ?? "");
-  const [inviteUserId, setInviteUserId] = useState("");
+  if (!room) return null;
+
+  return (
+    <Modal title={`${room.name} — Settings`} onClose={closeModal} wide>
+      <div className="flex flex-col gap-0">
+        {/* Tabs */}
+        <div className="-mx-4 -mt-1 mb-4 flex border-b border-bg-active px-4">
+          {(["overview", "members"] as Tab[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`border-b-2 px-4 py-2 text-sm font-medium capitalize transition-colors ${
+                tab === t
+                  ? "border-accent text-text-primary"
+                  : "border-transparent text-text-muted hover:text-text-secondary"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {tab === "overview" && (
+          <OverviewTab room={room} roomId={selectedRoomId!} userId={userId} closeModal={closeModal} />
+        )}
+        {tab === "members" && (
+          <MembersTab roomId={selectedRoomId!} userId={userId} />
+        )}
+
+        {/* Danger zone */}
+        <div className="mt-4 border-t border-bg-active pt-4">
+          <button
+            onClick={() => openModal("leaveRoom")}
+            className="rounded-sm px-4 py-2 text-sm font-medium text-red hover:bg-red/10"
+          >
+            Leave Channel
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ──────── Overview Tab ──────── */
+function OverviewTab({
+  room,
+  roomId,
+  userId,
+  closeModal,
+}: {
+  room: NonNullable<ReturnType<typeof useRoomStore.getState>["rooms"] extends Map<string, infer V> ? V : never>;
+  roomId: string;
+  userId: string | null;
+  closeModal: () => void;
+}) {
+  const [name, setName] = useState(room.name);
+  const [topic, setTopic] = useState(room.topic ?? "");
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [roomAvatarMxc, setRoomAvatarMxc] = useState<string | null>(null);
+  const [inviteUserId, setInviteUserId] = useState("");
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [canEdit, setCanEdit] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const client = getMatrixClient();
+  const homeserverUrl = client?.getHomeserverUrl() ?? "";
 
   useEffect(() => {
-    const client = getMatrixClient();
-    if (!client || !selectedRoomId || !userId) return;
-    const matrixRoom = client.getRoom(selectedRoomId);
+    if (!client || !roomId || !userId) return;
+    const matrixRoom = client.getRoom(roomId);
     if (!matrixRoom) return;
-
     const powerLevels = matrixRoom.currentState
       .getStateEvents("m.room.power_levels", "")
       ?.getContent();
-
     const userPower = powerLevels?.users?.[userId] ?? powerLevels?.users_default ?? 0;
     const requiredPower = powerLevels?.events?.["m.room.name"] ?? powerLevels?.state_default ?? 50;
-
     setCanEdit(userPower >= requiredPower);
-  }, [selectedRoomId, userId]);
+  }, [roomId, userId, client]);
+
+  const displayAvatarUrl = roomAvatarMxc
+    ? mxcToHttp(roomAvatarMxc, homeserverUrl)
+    : room.avatarUrl;
+
+  const handleAvatarUpload = async (file: File) => {
+    if (!client || !canEdit) return;
+    if (!file.type.startsWith("image/")) { setError("Please select an image file"); return; }
+    setUploadingAvatar(true);
+    setError(null);
+    try {
+      const response = await client.uploadContent(file, { type: file.type });
+      const mxcUrl = typeof response === "string" ? response : response.content_uri;
+      setRoomAvatarMxc(mxcUrl);
+    } catch (err) {
+      console.error("Failed to upload avatar:", err);
+      setError("Failed to upload image");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const hasChanges = name.trim() !== room.name || topic.trim() !== (room.topic ?? "") || roomAvatarMxc !== null;
 
   const handleSave = async () => {
-    const client = getMatrixClient();
-    if (!client || !selectedRoomId) return;
-
+    if (!client || !roomId) return;
     setSaving(true);
     setError(null);
-
     try {
-      if (name.trim() !== room?.name) {
-        await client.setRoomName(selectedRoomId, name.trim());
+      if (name.trim() !== room.name) {
+        await client.setRoomName(roomId, name.trim());
       }
-      if (topic.trim() !== (room?.topic ?? "")) {
-        await client.setRoomTopic(selectedRoomId, topic.trim());
+      if (topic.trim() !== (room.topic ?? "")) {
+        await client.setRoomTopic(roomId, topic.trim());
       }
-      closeModal();
+      if (roomAvatarMxc) {
+        await client.sendStateEvent(roomId, "m.room.avatar" as any, { url: roomAvatarMxc }, "");
+      }
+      setSuccessMsg("Settings saved!");
+      setTimeout(() => closeModal(), 600);
     } catch (err) {
       console.error("Failed to update room:", err);
       setError(err instanceof Error ? err.message : "Failed to save changes");
@@ -63,15 +150,12 @@ export function RoomSettingsModal() {
   };
 
   const handleInvite = async () => {
-    const client = getMatrixClient();
-    if (!client || !selectedRoomId || !inviteUserId.trim()) return;
-
+    if (!client || !roomId || !inviteUserId.trim()) return;
     setInviting(true);
     setError(null);
     setSuccessMsg(null);
-
     try {
-      await client.invite(selectedRoomId, inviteUserId.trim());
+      await client.invite(roomId, inviteUserId.trim());
       setSuccessMsg(`Invited ${inviteUserId.trim()}`);
       setInviteUserId("");
     } catch (err) {
@@ -82,87 +166,259 @@ export function RoomSettingsModal() {
     }
   };
 
-  if (!room) return null;
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Room avatar */}
+      <div className="flex items-center gap-4">
+        <div className="relative">
+          <Avatar name={room.name} url={displayAvatarUrl} size={64} />
+          {uploadingAvatar && (
+            <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            </div>
+          )}
+        </div>
+        {canEdit && (
+          <div className="flex flex-col gap-1">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingAvatar}
+              className="rounded-sm bg-bg-active px-3 py-1.5 text-xs font-medium text-text-primary hover:bg-bg-hover disabled:opacity-50"
+            >
+              Change Icon
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleAvatarUpload(file);
+                e.target.value = "";
+              }}
+            />
+          </div>
+        )}
+      </div>
 
-  const hasChanges = name.trim() !== room.name || topic.trim() !== (room.topic ?? "");
+      {/* Name */}
+      <div>
+        <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
+          Channel Name
+        </label>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          disabled={!canEdit}
+          className="w-full rounded-sm bg-bg-input p-2.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+        />
+      </div>
+
+      {/* Topic */}
+      <div>
+        <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
+          Topic
+        </label>
+        <textarea
+          value={topic}
+          onChange={(e) => setTopic(e.target.value)}
+          disabled={!canEdit}
+          placeholder="What is this channel about?"
+          rows={2}
+          className="w-full resize-none rounded-sm bg-bg-input p-2.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+        />
+      </div>
+
+      {canEdit && hasChanges && (
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="self-end rounded-sm bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+        >
+          {saving ? "Saving..." : "Save Changes"}
+        </button>
+      )}
+
+      {/* Invite */}
+      <div className="border-t border-bg-active pt-4">
+        <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
+          Invite User
+        </label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={inviteUserId}
+            onChange={(e) => setInviteUserId(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleInvite()}
+            placeholder="@user:matrix.org"
+            className="flex-1 rounded-sm bg-bg-input p-2.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent"
+          />
+          <button
+            onClick={handleInvite}
+            disabled={inviting || !inviteUserId.trim()}
+            className="rounded-sm bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+          >
+            {inviting ? "..." : "Invite"}
+          </button>
+        </div>
+      </div>
+
+      {/* Room ID */}
+      <div>
+        <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
+          Room ID
+        </label>
+        <div className="flex items-center gap-2 rounded-sm bg-bg-input p-2.5 text-xs text-text-muted">
+          <span className="flex-1 truncate">{roomId}</span>
+          <button
+            onClick={() => navigator.clipboard.writeText(roomId)}
+            className="flex-shrink-0 rounded p-1 text-text-muted hover:text-text-primary"
+            title="Copy Room ID"
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {error && <p className="text-sm text-red">{error}</p>}
+      {successMsg && <p className="text-sm text-green">{successMsg}</p>}
+    </div>
+  );
+}
+
+/* ──────── Members Tab ──────── */
+function MembersTab({ roomId, userId }: { roomId: string; userId: string | null }) {
+  const members = useMemberStore((s) => s.membersByRoom.get(roomId) ?? []);
+  const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [myPowerLevel, setMyPowerLevel] = useState(0);
+
+  const client = getMatrixClient();
+
+  useEffect(() => {
+    if (!client || !roomId || !userId) return;
+    const matrixRoom = client.getRoom(roomId);
+    if (!matrixRoom) return;
+    const powerLevels = matrixRoom.currentState
+      .getStateEvents("m.room.power_levels", "")
+      ?.getContent();
+    setMyPowerLevel(powerLevels?.users?.[userId] ?? powerLevels?.users_default ?? 0);
+  }, [roomId, userId, client]);
+
+  const sorted = [...members].sort((a, b) => {
+    if (a.powerLevel !== b.powerLevel) return b.powerLevel - a.powerLevel;
+    return a.displayName.localeCompare(b.displayName);
+  });
+
+  const handleKick = async (targetUserId: string) => {
+    if (!client) return;
+    setActionLoading(targetUserId);
+    setError(null);
+    try {
+      await client.kick(roomId, targetUserId, "Kicked by admin");
+    } catch (err) {
+      console.error("Failed to kick:", err);
+      setError(err instanceof Error ? err.message : "Failed to kick user");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleBan = async (targetUserId: string) => {
+    if (!client) return;
+    setActionLoading(targetUserId);
+    setError(null);
+    try {
+      await client.ban(roomId, targetUserId, "Banned by admin");
+    } catch (err) {
+      console.error("Failed to ban:", err);
+      setError(err instanceof Error ? err.message : "Failed to ban user");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const getRoleName = (power: number) => {
+    if (power >= 100) return "Owner";
+    if (power >= 50) return "Admin";
+    if (power >= 25) return "Moderator";
+    return null;
+  };
 
   return (
-    <Modal title="Channel Settings" onClose={closeModal}>
-      <div className="flex flex-col gap-4">
-        <div>
-          <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
-            Channel Name
-          </label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={!canEdit}
-            className="w-full rounded-sm bg-bg-input p-2.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
-          />
-        </div>
+    <div className="flex flex-col gap-2">
+      <p className="text-xs text-text-muted">{members.length} members</p>
+      <div className="max-h-80 overflow-y-auto">
+        {sorted.map((member) => {
+          const role = getRoleName(member.powerLevel);
+          const canManage = myPowerLevel > member.powerLevel && member.userId !== userId;
+          const isLoading = actionLoading === member.userId;
 
-        <div>
-          <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
-            Topic
-          </label>
-          <input
-            type="text"
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            disabled={!canEdit}
-            placeholder="No topic set"
-            className="w-full rounded-sm bg-bg-input p-2.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
-          />
-        </div>
-
-        {canEdit && hasChanges && (
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="self-end rounded-sm bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
-          >
-            {saving ? "Saving..." : "Save Changes"}
-          </button>
-        )}
-
-        <div className="h-px bg-bg-active" />
-
-        <div>
-          <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
-            Invite User
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={inviteUserId}
-              onChange={(e) => setInviteUserId(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleInvite()}
-              placeholder="@user:matrix.org"
-              className="flex-1 rounded-sm bg-bg-input p-2.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent"
-            />
-            <button
-              onClick={handleInvite}
-              disabled={inviting || !inviteUserId.trim()}
-              className="rounded-sm bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+          return (
+            <div
+              key={member.userId}
+              className="group flex items-center gap-3 rounded-sm px-2 py-2 hover:bg-bg-hover"
             >
-              {inviting ? "..." : "Invite"}
-            </button>
-          </div>
-        </div>
-
-        <div className="h-px bg-bg-active" />
-
-        <button
-          onClick={() => openModal("leaveRoom")}
-          className="self-start rounded-sm px-4 py-2 text-sm font-medium text-red hover:bg-red/10"
-        >
-          Leave Channel
-        </button>
-
-        {error && <p className="text-sm text-red">{error}</p>}
-        {successMsg && <p className="text-sm text-green">{successMsg}</p>}
+              <Avatar
+                name={member.displayName}
+                url={member.avatarUrl}
+                size={36}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm font-medium text-text-primary">
+                    {member.displayName}
+                  </span>
+                  {role && (
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                      member.powerLevel >= 100
+                        ? "bg-yellow/20 text-yellow"
+                        : member.powerLevel >= 50
+                          ? "bg-red/20 text-red"
+                          : "bg-accent/20 text-accent"
+                    }`}>
+                      {role}
+                    </span>
+                  )}
+                </div>
+                <p className="truncate text-xs text-text-muted">{member.userId}</p>
+              </div>
+              {canManage && !isLoading && (
+                <div className="hidden gap-1 group-hover:flex">
+                  <button
+                    onClick={() => handleKick(member.userId)}
+                    className="rounded p-1 text-text-muted hover:bg-bg-active hover:text-yellow"
+                    title="Kick"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 6L6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => handleBan(member.userId)}
+                    className="rounded p-1 text-text-muted hover:bg-bg-active hover:text-red"
+                    title="Ban"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M4.93 4.93l14.14 14.14" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+              {isLoading && (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-text-muted/30 border-t-text-muted" />
+              )}
+            </div>
+          );
+        })}
       </div>
-    </Modal>
+      {error && <p className="mt-2 text-sm text-red">{error}</p>}
+    </div>
   );
 }

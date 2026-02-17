@@ -1,5 +1,6 @@
-import { MatrixClient, ClientEvent, RoomEvent, RoomMemberEvent, MatrixEvent, Room } from "matrix-js-sdk";
-import { useRoomStore, RoomSummary, ChannelType } from "@/stores/roomStore";
+import { MatrixClient, ClientEvent, RoomEvent, RoomMemberEvent, MatrixEvent, Room, Membership } from "matrix-js-sdk";
+import { useRoomStore, RoomSummary, ChannelType, RoomMembership } from "@/stores/roomStore";
+import { requestNotificationPermission, sendMessageNotification, updateTitleWithUnread } from "@/lib/notifications";
 import { useMessageStore, Message } from "@/stores/messageStore";
 import { useMemberStore, Member } from "@/stores/memberStore";
 import { useTypingStore } from "@/stores/typingStore";
@@ -10,6 +11,12 @@ function mapEventToMessage(event: MatrixEvent, client: MatrixClient): Message {
   const sender = event.sender;
   const homeserverUrl = client.getHomeserverUrl();
   const content = event.getContent();
+
+  // Check if message was edited — use the replacement content if available
+  const replacingEvent = event.replacingEvent();
+  const effectiveContent = replacingEvent ? replacingEvent.getContent()["m.new_content"] ?? content : content;
+  const isEdited = !!replacingEvent || !!content["m.relates_to"]?.rel_type?.includes("replace");
+  const isRedacted = event.isRedacted();
 
   // Extract reply-to info from m.relates_to
   let replyToEvent: Message["replyToEvent"] = null;
@@ -52,34 +59,85 @@ function mapEventToMessage(event: MatrixEvent, client: MatrixClient): Message {
     // Ignore — reactions are optional
   }
 
+  // Check for thread relation
+  const threadRelation = content["m.relates_to"];
+  const threadRootId =
+    threadRelation?.rel_type === "m.thread" ? (threadRelation.event_id ?? null) : null;
+
+  // Count thread replies if this event is a thread root
+  let threadReplyCount = 0;
+  let threadLastReplyTs: number | null = null;
+  try {
+    const room = client.getRoom(event.getRoomId() ?? "");
+    if (room) {
+      const threadRelations = room.relations?.getChildEventsForEvent(
+        event.getId() ?? "", "m.thread", "m.room.message"
+      );
+      if (threadRelations) {
+        const events = threadRelations.getRelations();
+        threadReplyCount = events.length;
+        if (events.length > 0) {
+          threadLastReplyTs = events[events.length - 1].getTs();
+        }
+      }
+    }
+  } catch {
+    // Thread counting is best-effort
+  }
+
   return {
     eventId: event.getId() ?? "",
     roomId: event.getRoomId() ?? "",
     senderId: event.getSender() ?? "",
     senderName: sender?.name ?? event.getSender() ?? "Unknown",
     senderAvatar: sender ? mxcToHttp(sender.getMxcAvatarUrl(), homeserverUrl) : null,
-    body: content.body ?? "",
-    formattedBody: content.formatted_body ?? null,
+    body: isRedacted ? "" : (effectiveContent.body ?? ""),
+    formattedBody: isRedacted ? null : (effectiveContent.formatted_body ?? null),
     timestamp: event.getTs(),
-    type: content.msgtype ?? event.getType(),
+    type: effectiveContent.msgtype ?? event.getType(),
     isEncrypted: event.isEncrypted(),
     isDecryptionFailure: event.isDecryptionFailure()
       || (content.body ?? "").includes("Unable to decrypt"),
+    isEdited,
+    isRedacted,
     replyToEvent,
     reactions,
+    url: effectiveContent.url ?? null,
+    info: effectiveContent.info ?? null,
+    threadRootId,
+    threadReplyCount,
+    threadLastReplyTs,
   };
 }
 
 function buildRoomSummary(room: Room, client: MatrixClient): RoomSummary {
   const lastEvent = room.timeline[room.timeline.length - 1];
   const isSpace = room.isSpaceRoom();
+  const myUserId = client.getUserId() ?? "";
 
   // Detect channel type from m.room.create type field (Element standard)
-  // io.element.video = Element video room, org.matrix.msc3417.call = MSC3417 call room
   const channelType: ChannelType =
     (room as any).isElementVideoRoom?.() || (room as any).isCallRoom?.()
       ? "voice"
       : "text";
+
+  // Determine membership
+  const myMember = room.getMember(myUserId);
+  const membership: RoomMembership =
+    myMember?.membership === "invite" ? "invite" :
+    myMember?.membership === "leave" ? "leave" : "join";
+
+  // Detect DMs — rooms with exactly 2 joined/invited members and is_direct flag
+  const isDm = !!room.getDMInviter() ||
+    (room.getJoinedMemberCount() + room.getInvitedMemberCount() <= 2 &&
+     !isSpace &&
+     room.currentState.getStateEvents("m.room.create", "")?.getContent()?.type == null);
+
+  // Find who invited us (for invite UI)
+  let inviteSender: string | null = null;
+  if (membership === "invite") {
+    inviteSender = room.getDMInviter() ?? myMember?.events?.member?.getSender() ?? null;
+  }
 
   return {
     roomId: room.roomId,
@@ -94,6 +152,9 @@ function buildRoomSummary(room: Room, client: MatrixClient): RoomSummary {
     parentSpaceId: null,
     lastMessageTs: lastEvent?.getTs() ?? 0,
     channelType,
+    membership,
+    isDm,
+    inviteSender,
   };
 }
 
@@ -173,17 +234,42 @@ export function registerEventHandlers(client: MatrixClient): void {
     if (state === "PREPARED" || state === "SYNCING") {
       useRoomStore.getState().setSyncState("PREPARED");
       syncRoomList(client);
+      updateTitleWithUnread();
     } else if (state === "ERROR") {
       useRoomStore.getState().setSyncState("ERROR");
     }
   });
 
+  // Request notification permission once sync is ready
+  requestNotificationPermission();
+
   client.on(RoomEvent.Timeline, (event, room, toStartOfTimeline) => {
     if (toStartOfTimeline || !room) return;
 
     if (event.getType() === "m.room.message" || event.getType() === "m.room.encrypted") {
-      const message = mapEventToMessage(event, client);
-      useMessageStore.getState().addMessage(room.roomId, message);
+      // Check if this is an edit (m.replace relation)
+      const relatesTo = event.getContent()["m.relates_to"];
+      if (relatesTo?.rel_type === "m.replace" && relatesTo?.event_id) {
+        const newContent = event.getContent()["m.new_content"];
+        if (newContent) {
+          useMessageStore.getState().updateMessage(room.roomId, relatesTo.event_id, {
+            body: newContent.body ?? "",
+            formattedBody: newContent.formatted_body ?? null,
+            isEdited: true,
+          });
+        }
+      } else {
+        const message = mapEventToMessage(event, client);
+        useMessageStore.getState().addMessage(room.roomId, message);
+
+        // Send desktop notification for messages from other people
+        const myUserId = client.getUserId();
+        if (message.senderId !== myUserId && message.body) {
+          const roomName = room.name ?? "Unknown Room";
+          const isMention = myUserId ? message.body.includes(myUserId) : false;
+          sendMessageNotification(message.senderName, message.body, room.roomId, roomName, isMention);
+        }
+      }
     }
 
     // Handle reaction events
@@ -199,10 +285,36 @@ export function registerEventHandlers(client: MatrixClient): void {
       lastMessageTs: event.getTs(),
       unreadCount: room.getUnreadNotificationCount() ?? 0,
     });
+    updateTitleWithUnread();
+  });
+
+  // Handle redactions (message deletions)
+  client.on(RoomEvent.Redaction, (event, room) => {
+    if (!room) return;
+    const redactedId = event.event.redacts;
+    if (redactedId) {
+      useMessageStore.getState().updateMessage(room.roomId, redactedId, {
+        body: "",
+        formattedBody: null,
+        isRedacted: true,
+      });
+    }
   });
 
   client.on(RoomEvent.Name, (room) => {
     useRoomStore.getState().updateRoom(room.roomId, { name: room.name });
+  });
+
+  // Handle membership changes (new invites, joins, leaves)
+  client.on(RoomEvent.MyMembership, (room, membership: Membership) => {
+    if (membership === "invite" || membership === "join") {
+      const summary = buildRoomSummary(room, client);
+      const rooms = new Map(useRoomStore.getState().rooms);
+      rooms.set(room.roomId, summary);
+      useRoomStore.getState().setRooms(rooms);
+    } else if (membership === "leave") {
+      useRoomStore.getState().removeRoom(room.roomId);
+    }
   });
 
   // Typing indicators
@@ -246,6 +358,56 @@ export function loadRoomMessages(client: MatrixClient, roomId: string): void {
 
   useMessageStore.getState().setMessages(roomId, messages);
   syncRoomMembers(client, roomId);
+}
+
+export async function loadThreadMessages(
+  client: MatrixClient,
+  roomId: string,
+  threadRootId: string
+): Promise<void> {
+  const room = client.getRoom(roomId);
+  if (!room) return;
+
+  try {
+    // Fetch thread events using the relations API
+    const response = await client.relations(
+      roomId,
+      threadRootId,
+      "m.thread",
+      "m.room.message",
+      { limit: 100 }
+    );
+
+    const threadMsgs: Message[] = [];
+
+    // First, include the thread root message itself
+    const rootEvent = room.findEventById(threadRootId);
+    if (rootEvent) {
+      threadMsgs.push(mapEventToMessage(rootEvent, client));
+    }
+
+    // Then add all thread replies
+    if (response?.events) {
+      for (const evt of response.events) {
+        const mapped = mapEventToMessage(evt as MatrixEvent, client);
+        threadMsgs.push(mapped);
+      }
+    }
+
+    // Sort by timestamp
+    threadMsgs.sort((a, b) => a.timestamp - b.timestamp);
+    useMessageStore.getState().setThreadMessages(threadRootId, threadMsgs);
+  } catch (err) {
+    console.error("Failed to load thread messages:", err);
+
+    // Fallback: just show the root message
+    const rootEvent = room.findEventById(threadRootId);
+    if (rootEvent) {
+      useMessageStore.getState().setThreadMessages(threadRootId, [
+        mapEventToMessage(rootEvent, client),
+      ]);
+    }
+  }
 }
 
 export async function loadMoreMessages(

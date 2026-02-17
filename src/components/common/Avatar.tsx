@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { PresenceStatus } from "@/stores/presenceStore";
 
 interface AvatarProps {
@@ -26,7 +27,7 @@ function getColor(name: string): string {
   return COLORS[Math.abs(hash) % COLORS.length];
 }
 
-export function Avatar({ name, url, size = 40, presence }: AvatarProps) {
+function Initials({ name, size }: { name: string; size: number }) {
   const initials = name
     .split(" ")
     .map((w) => w[0])
@@ -34,16 +35,7 @@ export function Avatar({ name, url, size = 40, presence }: AvatarProps) {
     .slice(0, 2)
     .toUpperCase();
 
-  const dotSize = Math.max(10, size * 0.3);
-
-  const avatar = url ? (
-    <img
-      src={url}
-      alt={name}
-      className="flex-shrink-0 rounded-full object-cover"
-      style={{ width: size, height: size }}
-    />
-  ) : (
+  return (
     <div
       className="flex flex-shrink-0 items-center justify-center rounded-full"
       style={{
@@ -55,6 +47,24 @@ export function Avatar({ name, url, size = 40, presence }: AvatarProps) {
     >
       <span className="font-medium text-white">{initials}</span>
     </div>
+  );
+}
+
+export function Avatar({ name, url, size = 40, presence }: AvatarProps) {
+  const [imgError, setImgError] = useState(false);
+
+  const dotSize = Math.max(10, size * 0.3);
+
+  const avatar = url && !imgError ? (
+    <img
+      src={url}
+      alt={name}
+      className="flex-shrink-0 rounded-full object-cover"
+      style={{ width: size, height: size }}
+      onError={() => setImgError(true)}
+    />
+  ) : (
+    <Initials name={name} size={size} />
   );
 
   if (!presence) return avatar;

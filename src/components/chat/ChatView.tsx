@@ -1,11 +1,13 @@
 import { useEffect } from "react";
 import { useRoomStore } from "@/stores/roomStore";
+import { useMessageStore } from "@/stores/messageStore";
 import { getMatrixClient } from "@/lib/matrix";
 import { loadRoomMessages } from "@/lib/matrixEventHandlers";
 import { ChatHeader } from "./ChatHeader";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
 import { TypingIndicator } from "./TypingIndicator";
+import { ThreadPanel } from "./ThreadPanel";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { VoiceChannelView } from "@/components/voice/VoiceChannelView";
 
@@ -44,16 +46,21 @@ export function ChatView() {
     );
   }
 
+  const activeThreadId = useMessageStore((s) => s.activeThreadId);
+
   return (
     <ErrorBoundary>
-      <div className="flex flex-1 flex-col bg-bg-primary">
-        <ChatHeader
-          name={room?.name ?? "Unknown"}
-          topic={room?.topic ?? null}
-        />
-        <MessageList roomId={selectedRoomId} />
-        <TypingIndicator roomId={selectedRoomId} />
-        <MessageInput roomId={selectedRoomId} />
+      <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 flex-col bg-bg-primary">
+          <ChatHeader
+            name={room?.name ?? "Unknown"}
+            topic={room?.topic ?? null}
+          />
+          <MessageList roomId={selectedRoomId} />
+          <TypingIndicator roomId={selectedRoomId} />
+          <MessageInput roomId={selectedRoomId} />
+        </div>
+        {activeThreadId && <ThreadPanel />}
       </div>
     </ErrorBoundary>
   );

@@ -10,16 +10,25 @@ interface VoiceParticipantProps {
 
 export function VoiceParticipant({ participant, isLocal = false }: VoiceParticipantProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const isDeafened = useCallStore((s) => s.isDeafened);
 
   const stream = participant.feedId ? getFeedStream(participant.feedId) : null;
   const hasVideo = stream?.getVideoTracks().some((t) => t.enabled) && !participant.isVideoMuted;
 
+  // Attach video stream when video is active
   useEffect(() => {
     if (videoRef.current && stream && hasVideo) {
       videoRef.current.srcObject = stream;
     }
   }, [stream, hasVideo]);
+
+  // Attach audio stream for remote participants (local audio would cause echo)
+  useEffect(() => {
+    if (!isLocal && audioRef.current && stream) {
+      audioRef.current.srcObject = stream;
+    }
+  }, [stream, isLocal]);
 
   const isMuted = participant.isAudioMuted;
   const isSpeaking = participant.isSpeaking && !isMuted;
@@ -30,6 +39,16 @@ export function VoiceParticipant({ participant, isLocal = false }: VoiceParticip
         isSpeaking ? "ring-2 ring-green" : "ring-1 ring-bg-tertiary"
       }`}
     >
+      {/* Audio playback for remote participants */}
+      {!isLocal && (
+        <audio
+          ref={audioRef}
+          autoPlay
+          playsInline
+          muted={isDeafened}
+        />
+      )}
+
       {/* Video feed */}
       {hasVideo ? (
         <video

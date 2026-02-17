@@ -4,9 +4,10 @@ interface ModalProps {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  wide?: boolean;
 }
 
-export function Modal({ title, onClose, children }: ModalProps) {
+export function Modal({ title, onClose, children, wide }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -27,7 +28,7 @@ export function Modal({ title, onClose, children }: ModalProps) {
       onClick={handleOverlayClick}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
     >
-      <div className="w-full max-w-md rounded-md bg-bg-primary p-0 shadow-xl">
+      <div className={`w-full rounded-md bg-bg-primary p-0 shadow-xl ${wide ? "max-w-2xl" : "max-w-md"}`}>
         <div className="flex items-center justify-between px-4 pt-4">
           <h2 className="text-lg font-bold text-text-primary">{title}</h2>
           <button

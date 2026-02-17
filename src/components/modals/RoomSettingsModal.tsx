@@ -1,12 +1,23 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Modal } from "@/components/common/Modal";
 import { Avatar } from "@/components/common/Avatar";
+import { ThemedSelect } from "@/components/common/ThemedSelect";
 import { useUiStore } from "@/stores/uiStore";
 import { useRoomStore } from "@/stores/roomStore";
 import { useAuthStore } from "@/stores/authStore";
-import { useMemberStore } from "@/stores/memberStore";
+import { useMemberStore, type Member } from "@/stores/memberStore";
 import { getMatrixClient } from "@/lib/matrix";
 import { mxcToHttp } from "@/utils/matrixHelpers";
+import { EmojiPicker } from "@/components/chat/EmojiPicker";
+import {
+  getRoleForPowerLevel,
+  getAssignableRoles,
+  getPowerLevelForRoleName,
+  POWER_LEVEL_OWNER,
+  POWER_LEVEL_ADMIN,
+  POWER_LEVEL_MODERATOR,
+} from "@/utils/roles";
+import { syncRoomMembers } from "@/lib/matrixEventHandlers";
 
 type Tab = "overview" | "members";
 
@@ -85,10 +96,27 @@ function OverviewTab({
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [canEdit, setCanEdit] = useState(false);
+  const [canManageAccess, setCanManageAccess] = useState(false);
+  const [viewAccessLevel, setViewAccessLevel] = useState(room.minPowerLevelToView ?? 0);
+  const [showNameEmojiPicker, setShowNameEmojiPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const nameEmojiRef = useRef<HTMLDivElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!showNameEmojiPicker) return;
+    const handleClick = (e: MouseEvent) => {
+      if (nameEmojiRef.current && !nameEmojiRef.current.contains(e.target as Node)) {
+        setShowNameEmojiPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showNameEmojiPicker]);
 
   const client = getMatrixClient();
   const homeserverUrl = client?.getHomeserverUrl() ?? "";
+  const updateRoom = useRoomStore((s) => s.updateRoom);
 
   useEffect(() => {
     if (!client || !roomId || !userId) return;
@@ -100,7 +128,12 @@ function OverviewTab({
     const userPower = powerLevels?.users?.[userId] ?? powerLevels?.users_default ?? 0;
     const requiredPower = powerLevels?.events?.["m.room.name"] ?? powerLevels?.state_default ?? 50;
     setCanEdit(userPower >= requiredPower);
+    setCanManageAccess(userPower >= POWER_LEVEL_ADMIN);
   }, [roomId, userId, client]);
+
+  useEffect(() => {
+    setViewAccessLevel(room.minPowerLevelToView ?? 0);
+  }, [room.minPowerLevelToView]);
 
   const displayAvatarUrl = roomAvatarMxc
     ? mxcToHttp(roomAvatarMxc, homeserverUrl)
@@ -123,7 +156,12 @@ function OverviewTab({
     }
   };
 
-  const hasChanges = name.trim() !== room.name || topic.trim() !== (room.topic ?? "") || roomAvatarMxc !== null;
+  const accessChanged = viewAccessLevel !== (room.minPowerLevelToView ?? 0);
+  const hasChanges =
+    name.trim() !== room.name ||
+    topic.trim() !== (room.topic ?? "") ||
+    roomAvatarMxc !== null ||
+    accessChanged;
 
   const handleSave = async () => {
     if (!client || !roomId) return;
@@ -138,6 +176,15 @@ function OverviewTab({
       }
       if (roomAvatarMxc) {
         await client.sendStateEvent(roomId, "m.room.avatar" as any, { url: roomAvatarMxc }, "");
+      }
+      if (accessChanged && !room.isSpace && !room.isDm) {
+        await client.sendStateEvent(
+          roomId,
+          "org.concord.room.access" as any,
+          { minPowerLevelToView: viewAccessLevel },
+          ""
+        );
+        updateRoom(roomId, { minPowerLevelToView: viewAccessLevel });
       }
       setSuccessMsg("Settings saved!");
       setTimeout(() => closeModal(), 600);
@@ -207,13 +254,43 @@ function OverviewTab({
         <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
           Channel Name
         </label>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          disabled={!canEdit}
-          className="w-full rounded-sm bg-bg-input p-2.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
-        />
+        <div className="relative flex items-center">
+          <input
+            ref={nameInputRef}
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={!canEdit}
+            className="w-full rounded-sm bg-bg-input p-2.5 pr-10 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+          />
+          {canEdit && (
+            <div className="absolute right-1" ref={nameEmojiRef}>
+              <button
+                type="button"
+                onClick={() => setShowNameEmojiPicker(!showNameEmojiPicker)}
+                className="rounded p-1 text-text-muted hover:text-text-primary"
+                title="Add emoji"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" />
+                </svg>
+              </button>
+              {showNameEmojiPicker && (
+                <div className="absolute bottom-full right-0 z-50 mb-2">
+                  <EmojiPicker
+                    onSelect={(emoji) => {
+                      setName((prev) => prev + emoji);
+                      setShowNameEmojiPicker(false);
+                      nameInputRef.current?.focus();
+                    }}
+                    onClose={() => setShowNameEmojiPicker(false)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Topic */}
@@ -239,6 +316,28 @@ function OverviewTab({
         >
           {saving ? "Saving..." : "Save Changes"}
         </button>
+      )}
+
+      {/* Channel access (who can view) — only for channels, not spaces/DMs */}
+      {!room.isSpace && !room.isDm && canManageAccess && (
+        <div className="border-t border-bg-active pt-4">
+          <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
+            Who can view this channel
+          </label>
+          <p className="mb-2 text-xs text-text-muted">
+            Only users with at least this role will see the channel in the list.
+          </p>
+          <ThemedSelect
+            value={String(viewAccessLevel)}
+            onChange={(v) => setViewAccessLevel(Number(v))}
+            options={[
+              { value: "0", label: "Everyone (Member+)" },
+              { value: String(POWER_LEVEL_MODERATOR), label: "Moderator and above" },
+              { value: String(POWER_LEVEL_ADMIN), label: "Admin and above" },
+              { value: String(POWER_LEVEL_OWNER), label: "Owner only" },
+            ]}
+          />
+        </div>
       )}
 
       {/* Invite */}
@@ -292,13 +391,22 @@ function OverviewTab({
 }
 
 /* ──────── Members Tab ──────── */
+const EMPTY_MEMBERS: Member[] = [];
+
 function MembersTab({ roomId, userId }: { roomId: string; userId: string | null }) {
-  const members = useMemberStore((s) => s.membersByRoom.get(roomId) ?? []);
+  const membersByRoom = useMemberStore((s) => s.membersByRoom);
+  const members = membersByRoom.get(roomId) ?? EMPTY_MEMBERS;
+  const updateMemberPowerLevel = useMemberStore((s) => s.updateMemberPowerLevel);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [myPowerLevel, setMyPowerLevel] = useState(0);
 
   const client = getMatrixClient();
+  const assignableRoles = getAssignableRoles();
+  const roleOptions = useMemo(
+    () => assignableRoles.map((r) => ({ value: r.name, label: r.name })),
+    [assignableRoles]
+  );
 
   useEffect(() => {
     if (!client || !roomId || !userId) return;
@@ -343,11 +451,25 @@ function MembersTab({ roomId, userId }: { roomId: string; userId: string | null 
     }
   };
 
-  const getRoleName = (power: number) => {
-    if (power >= 100) return "Owner";
-    if (power >= 50) return "Admin";
-    if (power >= 25) return "Moderator";
-    return null;
+  const handleSetRole = async (targetUserId: string, roleName: string) => {
+    if (!client) return;
+    const newLevel = getPowerLevelForRoleName(roleName);
+    const member = members.find((m) => m.userId === targetUserId);
+    if (!member || member.powerLevel === newLevel) return;
+    const previousLevel = member.powerLevel;
+    setActionLoading(targetUserId);
+    setError(null);
+    updateMemberPowerLevel(roomId, targetUserId, newLevel);
+    try {
+      await client.setPowerLevel(roomId, targetUserId, newLevel);
+      syncRoomMembers(client, roomId);
+    } catch (err) {
+      console.error("Failed to set role:", err);
+      updateMemberPowerLevel(roomId, targetUserId, previousLevel);
+      setError(err instanceof Error ? err.message : "Failed to set role");
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   return (
@@ -355,8 +477,9 @@ function MembersTab({ roomId, userId }: { roomId: string; userId: string | null 
       <p className="text-xs text-text-muted">{members.length} members</p>
       <div className="max-h-80 overflow-y-auto">
         {sorted.map((member) => {
-          const role = getRoleName(member.powerLevel);
+          const role = getRoleForPowerLevel(member.powerLevel);
           const canManage = myPowerLevel > member.powerLevel && member.userId !== userId;
+          const canChangeRole = canManage && myPowerLevel >= POWER_LEVEL_OWNER;
           const isLoading = actionLoading === member.userId;
 
           return (
@@ -370,50 +493,58 @@ function MembersTab({ roomId, userId }: { roomId: string; userId: string | null 
                 size={36}
               />
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="truncate text-sm font-medium text-text-primary">
                     {member.displayName}
                   </span>
                   {role && (
-                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                      member.powerLevel >= 100
-                        ? "bg-yellow/20 text-yellow"
-                        : member.powerLevel >= 50
-                          ? "bg-red/20 text-red"
-                          : "bg-accent/20 text-accent"
-                    }`}>
-                      {role}
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${role.colorClass}`}
+                      title={role.description}
+                    >
+                      {role.name}
                     </span>
                   )}
                 </div>
                 <p className="truncate text-xs text-text-muted">{member.userId}</p>
               </div>
-              {canManage && !isLoading && (
-                <div className="hidden gap-1 group-hover:flex">
-                  <button
-                    onClick={() => handleKick(member.userId)}
-                    className="rounded p-1 text-text-muted hover:bg-bg-active hover:text-yellow"
-                    title="Kick"
-                  >
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M18 6L6 18M6 6l12 12" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => handleBan(member.userId)}
-                    className="rounded p-1 text-text-muted hover:bg-bg-active hover:text-red"
-                    title="Ban"
-                  >
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M4.93 4.93l14.14 14.14" />
-                    </svg>
-                  </button>
-                </div>
-              )}
-              {isLoading && (
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-text-muted/30 border-t-text-muted" />
-              )}
+              <div className="flex items-center gap-1">
+                {canChangeRole && !isLoading && (
+                  <ThemedSelect
+                    value={role?.name ?? "Member"}
+                    onChange={(v) => handleSetRole(member.userId, v)}
+                    options={roleOptions}
+                    title="Change role"
+                    className="w-28"
+                  />
+                )}
+                {canManage && !isLoading && (
+                  <div className="hidden gap-1 group-hover:flex">
+                    <button
+                      onClick={() => handleKick(member.userId)}
+                      className="rounded p-1 text-text-muted hover:bg-bg-active hover:text-yellow"
+                      title="Kick"
+                    >
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M18 6L6 18M6 6l12 12" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleBan(member.userId)}
+                      className="rounded p-1 text-text-muted hover:bg-bg-active hover:text-red"
+                      title="Ban"
+                    >
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M4.93 4.93l14.14 14.14" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+                {isLoading && (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-text-muted/30 border-t-text-muted" />
+                )}
+              </div>
             </div>
           );
         })}

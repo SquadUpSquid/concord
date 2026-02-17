@@ -67,6 +67,8 @@ export const useMessageStore = create<MessageState>()((set, get) => ({
     if (message.threadRootId) {
       const threadMap = new Map(get().threadMessages);
       const existing = threadMap.get(message.threadRootId) ?? [];
+      // Prevent duplicate thread messages
+      if (existing.some((m) => m.eventId === message.eventId)) return;
       threadMap.set(message.threadRootId, [...existing, message]);
 
       // Update the thread root's reply count in the main room messages
@@ -90,6 +92,8 @@ export const useMessageStore = create<MessageState>()((set, get) => ({
 
     const map = new Map(get().messagesByRoom);
     const existing = map.get(roomId) ?? [];
+    // Prevent duplicate messages
+    if (existing.some((m) => m.eventId === message.eventId)) return;
     map.set(roomId, [...existing, message]);
     set({ messagesByRoom: map });
   },

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PresenceStatus } from "@/stores/presenceStore";
 
 interface AvatarProps {
@@ -52,6 +52,11 @@ function Initials({ name, size }: { name: string; size: number }) {
 
 export function Avatar({ name, url, size = 40, presence }: AvatarProps) {
   const [imgError, setImgError] = useState(false);
+
+  // Reset error state when URL changes (e.g., re-login, profile update)
+  useEffect(() => {
+    setImgError(false);
+  }, [url]);
 
   const dotSize = Math.max(10, size * 0.3);
 

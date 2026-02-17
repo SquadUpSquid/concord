@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Avatar } from "@/components/common/Avatar";
 import { CallParticipant, getFeedStream } from "@/stores/callStore";
 import { useCallStore } from "@/stores/callStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 interface VoiceParticipantProps {
   participant: CallParticipant;
@@ -12,6 +13,7 @@ export function VoiceParticipant({ participant, isLocal = false }: VoiceParticip
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const isDeafened = useCallStore((s) => s.isDeafened);
+  const audioOutputDeviceId = useSettingsStore((s) => s.audioOutputDeviceId);
 
   const stream = participant.feedId ? getFeedStream(participant.feedId) : null;
   const hasVideo = stream?.getVideoTracks().some((t) => t.enabled) && !participant.isVideoMuted;
@@ -23,12 +25,17 @@ export function VoiceParticipant({ participant, isLocal = false }: VoiceParticip
     }
   }, [stream, hasVideo]);
 
-  // Attach audio stream for remote participants (local audio would cause echo)
+  // Attach audio stream for remote participants and apply output device
   useEffect(() => {
-    if (!isLocal && audioRef.current && stream) {
-      audioRef.current.srcObject = stream;
+    if (isLocal || !audioRef.current || !stream) return;
+    const el = audioRef.current;
+    el.srcObject = stream;
+    if (audioOutputDeviceId && "setSinkId" in el) {
+      (el as HTMLAudioElement & { setSinkId(id: string): Promise<void> })
+        .setSinkId(audioOutputDeviceId)
+        .catch((err) => console.warn("Failed to set audio output device:", err));
     }
-  }, [stream, isLocal]);
+  }, [stream, isLocal, audioOutputDeviceId]);
 
   const isMuted = participant.isAudioMuted;
   const isSpeaking = participant.isSpeaking && !isMuted;

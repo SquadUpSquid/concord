@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface ServerIconProps {
   name: string;
@@ -29,6 +29,11 @@ export function ServerIcon({
   onClick,
 }: ServerIconProps) {
   const [imgError, setImgError] = useState(false);
+
+  // Reset error state when URL changes
+  useEffect(() => {
+    setImgError(false);
+  }, [avatarUrl]);
 
   const initials = name
     .split(" ")

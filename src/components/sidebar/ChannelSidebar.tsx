@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useRoomStore } from "@/stores/roomStore";
 import { useUiStore } from "@/stores/uiStore";
+import { useChannelOrderStore, sortChannelsByOrder } from "@/stores/channelOrderStore";
+import { useChannelPrefsStore } from "@/stores/channelPrefsStore";
+import type { ChannelListType } from "@/stores/channelOrderStore";
 import { ChannelItem } from "./ChannelItem";
 import { InviteItem } from "./InviteItem";
 import { useAuthStore } from "@/stores/authStore";
@@ -9,6 +12,8 @@ import { Avatar } from "@/components/common/Avatar";
 import { ConnectedCallBar } from "@/components/voice/ConnectedCallBar";
 import { getMatrixClient } from "@/lib/matrix";
 import { mxcToHttp } from "@/utils/matrixHelpers";
+
+const CHANNEL_DND_TYPE = "application/x-concord-channel";
 
 export function ChannelSidebar() {
   const rooms = useRoomStore((s) => s.rooms);
@@ -20,6 +25,13 @@ export function ChannelSidebar() {
 
   const [textCollapsed, setTextCollapsed] = useState(false);
   const [voiceCollapsed, setVoiceCollapsed] = useState(false);
+  const [dragOverIndex, setDragOverIndex] = useState<{ type: ChannelListType; index: number } | null>(null);
+
+  const getOrder = useChannelOrderStore((s) => s.getOrder);
+  const reorderChannel = useChannelOrderStore((s) => s.reorderChannel);
+  const channelPrefs = useChannelPrefsStore((s) => s.prefs);
+
+  const [favoritesCollapsed, setFavoritesCollapsed] = useState(false);
 
   const myPresence = usePresenceStore(
     (s) => s.presenceByUser.get(userId ?? "")?.presence ?? "online"
@@ -34,16 +46,64 @@ export function ChannelSidebar() {
     if (r.isSpace) return false;
     if (r.membership !== "join") return false;
     if (selectedSpaceId === null) return r.parentSpaceId === null;
-    return r.parentSpaceId === selectedSpaceId;
+    if (r.parentSpaceId !== selectedSpaceId) return false;
+    const required = r.minPowerLevelToView ?? 0;
+    if (required > 0) {
+      const myLevel = r.myPowerLevel ?? 0;
+      if (myLevel < required) return false;
+    }
+    return true;
   });
 
-  const textChannels = channels
-    .filter((ch) => ch.channelType === "text")
-    .sort((a, b) => a.name.localeCompare(b.name));
+  // Separate favorite channels
+  const favoriteChannels = channels.filter((ch) => channelPrefs[ch.roomId]?.isFavorite);
+  const nonFavoriteChannels = channels.filter((ch) => !channelPrefs[ch.roomId]?.isFavorite);
 
-  const voiceChannels = channels
-    .filter((ch) => ch.channelType === "voice")
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const textChannelsRaw = nonFavoriteChannels.filter((ch) => ch.channelType === "text");
+  const voiceChannelsRaw = nonFavoriteChannels.filter((ch) => ch.channelType === "voice");
+
+  const textOrder = selectedSpaceId ? getOrder(selectedSpaceId, "text") : [];
+  const voiceOrder = selectedSpaceId ? getOrder(selectedSpaceId, "voice") : [];
+  const textChannels = sortChannelsByOrder(textChannelsRaw, textOrder);
+  const voiceChannels = sortChannelsByOrder(voiceChannelsRaw, voiceOrder);
+
+  const canReorder = selectedSpaceId !== null;
+
+  function handleDragStart(e: React.DragEvent, roomId: string, type: ChannelListType) {
+    e.dataTransfer.setData(CHANNEL_DND_TYPE, JSON.stringify({ roomId, type }));
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", ""); // some browsers need this
+  }
+
+  function handleDragOver(e: React.DragEvent, type: ChannelListType, index: number) {
+    if (!e.dataTransfer.types.includes(CHANNEL_DND_TYPE)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverIndex({ type, index });
+  }
+
+  function handleDragLeave() {
+    setDragOverIndex(null);
+  }
+
+  function handleDrop(e: React.DragEvent, type: ChannelListType, insertIndex: number) {
+    e.preventDefault();
+    setDragOverIndex(null);
+    try {
+      const raw = e.dataTransfer.getData(CHANNEL_DND_TYPE);
+      if (!raw) return;
+      const { roomId, type: draggedType } = JSON.parse(raw) as { roomId: string; type: ChannelListType };
+      if (draggedType !== type || !selectedSpaceId) return;
+      const currentOrder = type === "text" ? textChannels.map((c) => c.roomId) : voiceChannels.map((c) => c.roomId);
+      reorderChannel(selectedSpaceId, type, roomId, insertIndex, currentOrder);
+    } catch {
+      // ignore
+    }
+  }
+
+  function handleDragEnd() {
+    setDragOverIndex(null);
+  }
 
   const spaceName = selectedSpaceId
     ? rooms.get(selectedSpaceId)?.name ?? "Space"
@@ -53,8 +113,8 @@ export function ChannelSidebar() {
   const client = getMatrixClient();
   const user = client?.getUser(userId ?? "");
   const displayName = user?.displayName ?? userId ?? "User";
-  const avatarUrl = user
-    ? mxcToHttp(user.avatarUrl ?? null, client!.getHomeserverUrl())
+  const avatarUrl = user && client
+    ? mxcToHttp(user.avatarUrl ?? null, client.getHomeserverUrl())
     : null;
 
   return (
@@ -100,6 +160,41 @@ export function ChannelSidebar() {
           </p>
         )}
 
+        {/* Favorites Section */}
+        {favoriteChannels.length > 0 && (
+          <div className="mb-1">
+            <button
+              onClick={() => setFavoritesCollapsed(!favoritesCollapsed)}
+              className="group flex w-full items-center gap-0.5 px-1 py-1.5"
+            >
+              <svg
+                className={`h-3 w-3 text-text-muted transition-transform ${
+                  favoritesCollapsed ? "-rotate-90" : ""
+                }`}
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M7 10l5 5 5-5z" />
+              </svg>
+              <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-yellow group-hover:text-yellow/80">
+                Favorites — {favoriteChannels.length}
+              </span>
+            </button>
+            {!favoritesCollapsed &&
+              favoriteChannels.map((ch) => (
+                <ChannelItem
+                  key={ch.roomId}
+                  roomId={ch.roomId}
+                  name={ch.name}
+                  channelType={ch.channelType}
+                  unreadCount={ch.unreadCount}
+                  isSelected={selectedRoomId === ch.roomId}
+                  onClick={() => selectRoom(ch.roomId)}
+                />
+              ))}
+          </div>
+        )}
+
         {/* Text Channels Section */}
         {(textChannels.length > 0 || channels.length > 0) && (
           <div className="mb-1">
@@ -135,24 +230,48 @@ export function ChannelSidebar() {
             </button>
             {!textCollapsed && (
               <div>
-                {textChannels.map((ch) => (
-                  <ChannelItem
-                    key={ch.roomId}
-                    roomId={ch.roomId}
-                    name={ch.name}
-                    channelType={ch.channelType}
-                    unreadCount={ch.unreadCount}
-                    isSelected={selectedRoomId === ch.roomId}
-                    onClick={() => selectRoom(ch.roomId)}
+                {canReorder && textChannels.length > 0 && (
+                  <div
+                    onDragOver={(e) => handleDragOver(e, "text", 0)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, "text", 0)}
+                    className={`min-h-[6px] transition-colors ${dragOverIndex?.type === "text" && dragOverIndex?.index === 0 ? "bg-accent/30" : "bg-transparent"}`}
                   />
+                )}
+                {textChannels.map((ch, i) => (
+                  <span key={ch.roomId} className="block">
+                    {canReorder && (
+                      <div
+                        onDragOver={(e) => handleDragOver(e, "text", i + 1)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, "text", i + 1)}
+                        className={`min-h-[6px] transition-colors ${dragOverIndex?.type === "text" && dragOverIndex?.index === i + 1 ? "bg-accent/30" : "bg-transparent"}`}
+                      />
+                    )}
+                    <div
+                      draggable={canReorder}
+                      onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, "text") : undefined}
+                      onDragEnd={canReorder ? handleDragEnd : undefined}
+                      className={canReorder ? "cursor-grab active:cursor-grabbing" : ""}
+                    >
+                      <ChannelItem
+                        roomId={ch.roomId}
+                        name={ch.name}
+                        channelType={ch.channelType}
+                        unreadCount={ch.unreadCount}
+                        isSelected={selectedRoomId === ch.roomId}
+                        onClick={() => selectRoom(ch.roomId)}
+                      />
+                    </div>
+                  </span>
                 ))}
               </div>
             )}
           </div>
         )}
 
-        {/* Voice Channels Section */}
-        {(voiceChannels.length > 0 || channels.length > 0) && (
+        {/* Voice Channels Section — only show when a space is selected, not in overview */}
+        {selectedSpaceId !== null && (voiceChannels.length > 0 || channels.length > 0) && (
           <div className="mb-1">
             <button
               onClick={() => setVoiceCollapsed(!voiceCollapsed)}
@@ -189,17 +308,43 @@ export function ChannelSidebar() {
                 {voiceChannels.length === 0 ? (
                   <p className="px-3 py-1 text-xs text-text-muted">No voice channels</p>
                 ) : (
-                  voiceChannels.map((ch) => (
-                    <ChannelItem
-                      key={ch.roomId}
-                      roomId={ch.roomId}
-                      name={ch.name}
-                      channelType={ch.channelType}
-                      unreadCount={ch.unreadCount}
-                      isSelected={selectedRoomId === ch.roomId}
-                      onClick={() => selectRoom(ch.roomId)}
-                    />
-                  ))
+                  <>
+                    {canReorder && (
+                      <div
+                        onDragOver={(e) => handleDragOver(e, "voice", 0)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, "voice", 0)}
+                        className={`min-h-[6px] transition-colors ${dragOverIndex?.type === "voice" && dragOverIndex?.index === 0 ? "bg-accent/30" : "bg-transparent"}`}
+                      />
+                    )}
+                    {voiceChannels.map((ch, i) => (
+                      <span key={ch.roomId} className="block">
+                        {canReorder && (
+                          <div
+                            onDragOver={(e) => handleDragOver(e, "voice", i + 1)}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, "voice", i + 1)}
+                            className={`min-h-[6px] transition-colors ${dragOverIndex?.type === "voice" && dragOverIndex?.index === i + 1 ? "bg-accent/30" : "bg-transparent"}`}
+                          />
+                        )}
+                        <div
+                          draggable={canReorder}
+                          onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, "voice") : undefined}
+                          onDragEnd={canReorder ? handleDragEnd : undefined}
+                          className={canReorder ? "cursor-grab active:cursor-grabbing" : ""}
+                        >
+                          <ChannelItem
+                            roomId={ch.roomId}
+                            name={ch.name}
+                            channelType={ch.channelType}
+                            unreadCount={ch.unreadCount}
+                            isSelected={selectedRoomId === ch.roomId}
+                            onClick={() => selectRoom(ch.roomId)}
+                          />
+                        </div>
+                      </span>
+                    ))}
+                  </>
                 )}
               </div>
             )}

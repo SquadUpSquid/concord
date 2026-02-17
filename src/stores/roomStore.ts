@@ -16,6 +16,10 @@ export interface RoomSummary {
   membership: RoomMembership;
   isDm: boolean;
   inviteSender: string | null;
+  /** Minimum power level required to view this channel (Discord-style). 0 = everyone. */
+  minPowerLevelToView: number;
+  /** Current user's power level in this room (for filtering by access). */
+  myPowerLevel: number;
 }
 
 interface RoomState {

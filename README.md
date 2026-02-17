@@ -1,4 +1,8 @@
-# Concord
+<p align="center">
+  <img src="assets/concord-banner.png" alt="Concord" width="100%">
+</p>
+
+# Concord -- WORK IN PROGRESS NO OFFICIAL RELEASE
 
 A Discord-like desktop client for [Matrix](https://matrix.org), built with React, TypeScript, and Tauri.
 

@@ -11,6 +11,7 @@ import {
 import { CallFeed, CallFeedEvent } from "matrix-js-sdk/lib/webrtc/callFeed";
 import { getMatrixClient } from "@/lib/matrix";
 import { mxcToHttp } from "@/utils/matrixHelpers";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 // --- Types ---
 
@@ -36,6 +37,8 @@ interface CallState {
   wasMicMutedBeforeDeafen: boolean;
   isScreenSharing: boolean;
   participants: Map<string, CallParticipant>;
+  /** Active screenshare feeds for the current call (feedId -> displayName) */
+  screenshareFeeds: { feedId: string; userId: string; displayName: string }[];
   activeSpeakerId: string | null;
   participantsByRoom: Map<string, CallParticipant[]>;
 
@@ -58,6 +61,7 @@ interface CallState {
 let activeGroupCall: GroupCall | null = null;
 const feedStreamMap = new Map<string, MediaStream>();
 const feedListenerCleanups: (() => void)[] = [];
+const screenshareFeedCleanups: (() => void)[] = [];
 
 export function getActiveGroupCall(): GroupCall | null {
   return activeGroupCall;
@@ -171,13 +175,34 @@ function attachGroupCallListeners(
     }
   });
 
+  groupCall.on(GroupCallEvent.LocalScreenshareStateChanged, (isScreensharing: boolean) => {
+    set({ isScreenSharing: isScreensharing });
+  });
+
   groupCall.on(GroupCallEvent.ScreenshareFeedsChanged, (feeds: CallFeed[]) => {
+    for (const cleanup of screenshareFeedCleanups) cleanup();
+    screenshareFeedCleanups.length = 0;
+    for (const key of feedStreamMap.keys()) {
+      if (key.startsWith("screenshare:")) feedStreamMap.delete(key);
+    }
+    const list: { feedId: string; userId: string; displayName: string }[] = [];
     for (const feed of feeds) {
       const feedId = `screenshare:${feed.userId}:${feed.deviceId ?? "default"}`;
       feedStreamMap.set(feedId, feed.stream);
+      const member = feed.getMember();
+      list.push({
+        feedId,
+        userId: feed.userId,
+        displayName: member?.name ?? feed.userId,
+      });
+      const onNewStream = (newStream: MediaStream) => {
+        feedStreamMap.set(feedId, newStream);
+        set({ screenshareFeeds: [...get().screenshareFeeds] });
+      };
+      feed.on(CallFeedEvent.NewStream, onNewStream);
+      screenshareFeedCleanups.push(() => feed.off(CallFeedEvent.NewStream, onNewStream));
     }
-    // Trigger re-render
-    set({ participants: new Map(get().participants) });
+    set({ screenshareFeeds: list });
   });
 
   groupCall.on(GroupCallEvent.Error, (error) => {
@@ -191,8 +216,11 @@ function detachGroupCallListeners(groupCall: GroupCall): void {
   groupCall.removeAllListeners(GroupCallEvent.ActiveSpeakerChanged);
   groupCall.removeAllListeners(GroupCallEvent.LocalMuteStateChanged);
   groupCall.removeAllListeners(GroupCallEvent.GroupCallStateChanged);
+  groupCall.removeAllListeners(GroupCallEvent.LocalScreenshareStateChanged);
   groupCall.removeAllListeners(GroupCallEvent.ScreenshareFeedsChanged);
   groupCall.removeAllListeners(GroupCallEvent.Error);
+  for (const cleanup of screenshareFeedCleanups) cleanup();
+  screenshareFeedCleanups.length = 0;
   cleanupFeedListeners();
 }
 
@@ -208,6 +236,7 @@ const initialState = {
   wasMicMutedBeforeDeafen: false,
   isScreenSharing: false,
   participants: new Map<string, CallParticipant>(),
+  screenshareFeeds: [] as { feedId: string; userId: string; displayName: string }[],
   activeSpeakerId: null,
   participantsByRoom: new Map<string, CallParticipant[]>(),
 };
@@ -275,8 +304,23 @@ export const useCallStore = create<CallState>()((set, get) => ({
       // Try to get an existing group call first (created by another participant)
       let groupCall = client.getGroupCallForRoom(roomId);
 
-      // No existing call — try to create one; if we lack permissions, wait for
-      // the room state to sync in case another participant creates it
+      // If no existing group call, try to find one by checking room state for
+      // org.matrix.msc3401.call or io.element.video state events
+      if (!groupCall) {
+        const room = client.getRoom(roomId);
+        if (room) {
+          // Force the GroupCallEventHandler to re-scan this room
+          try {
+            client.groupCallEventHandler.waitUntilRoomReadyForGroupCalls(roomId);
+            await new Promise((r) => setTimeout(r, 500));
+            groupCall = client.getGroupCallForRoom(roomId);
+          } catch {
+            // Continue to create
+          }
+        }
+      }
+
+      // Still no call - create one
       if (!groupCall) {
         try {
           groupCall = await client.createGroupCall(
@@ -287,9 +331,12 @@ export const useCallStore = create<CallState>()((set, get) => ({
           );
         } catch (createErr) {
           console.warn("Could not create group call, checking for existing:", createErr);
-          // Wait a moment for room state sync then check again
-          await new Promise((r) => setTimeout(r, 2000));
-          groupCall = client.getGroupCallForRoom(roomId);
+          // Wait longer for room state sync, then check again with retries
+          for (let i = 0; i < 3; i++) {
+            await new Promise((r) => setTimeout(r, 2000));
+            groupCall = client.getGroupCallForRoom(roomId);
+            if (groupCall) break;
+          }
           if (!groupCall) {
             throw createErr;
           }
@@ -299,13 +346,47 @@ export const useCallStore = create<CallState>()((set, get) => ({
       activeGroupCall = groupCall;
       attachGroupCallListeners(groupCall, set, get);
 
+      // Apply user's preferred input devices before entering
+      const { audioInputDeviceId, videoInputDeviceId } = useSettingsStore.getState();
+      const mediaHandler = client.getMediaHandler?.();
+      if (mediaHandler) {
+        await (mediaHandler as { setMediaInputs(a?: string, v?: string): Promise<void> })
+          .setMediaInputs(
+            audioInputDeviceId ?? undefined,
+            videoInputDeviceId ?? undefined
+          )
+          .catch((err) => console.warn("Failed to set media devices:", err));
+      }
+
       // Enter the call (requests mic, starts WebRTC connections)
       await groupCall.enter();
 
       // Voice-first: mute video by default
       await groupCall.setLocalVideoMuted(true);
 
-      set({ connectionState: "connected", isMicMuted: false, isVideoMuted: true, error: null });
+      // Sync initial screenshare state (local + any existing remote feeds)
+      for (const key of feedStreamMap.keys()) {
+        if (key.startsWith("screenshare:")) feedStreamMap.delete(key);
+      }
+      const list: { feedId: string; userId: string; displayName: string }[] = [];
+      for (const feed of groupCall.screenshareFeeds) {
+        const feedId = `screenshare:${feed.userId}:${feed.deviceId ?? "default"}`;
+        feedStreamMap.set(feedId, feed.stream);
+        const member = feed.getMember();
+        list.push({
+          feedId,
+          userId: feed.userId,
+          displayName: member?.name ?? feed.userId,
+        });
+      }
+      set({
+        connectionState: "connected",
+        isMicMuted: false,
+        isVideoMuted: true,
+        isScreenSharing: groupCall.isScreensharing(),
+        screenshareFeeds: list,
+        error: null,
+      });
     } catch (err) {
       console.error("Failed to join call:", err);
       if (activeGroupCall) {

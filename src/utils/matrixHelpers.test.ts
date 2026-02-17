@@ -6,8 +6,9 @@ describe("mxcToHttp", () => {
 
   it("converts a valid mxc URL to HTTP thumbnail URL", () => {
     const result = mxcToHttp("mxc://matrix.org/abcdef123", homeserver);
+    // Without a client, falls back to authenticated endpoint (no token)
     expect(result).toBe(
-      "https://matrix.org/_matrix/media/v3/thumbnail/matrix.org/abcdef123?width=96&height=96&method=crop"
+      "https://matrix.org/_matrix/client/v1/media/thumbnail/matrix.org/abcdef123?width=96&height=96&method=crop"
     );
   });
 

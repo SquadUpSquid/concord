@@ -5,6 +5,7 @@ import { PrivacySection } from "./PrivacySection";
 import { AppearanceSection } from "./AppearanceSection";
 import { NotificationsSection } from "./NotificationsSection";
 import { SessionsSection } from "./SessionsSection";
+import { VoiceVideoSection } from "./VoiceVideoSection";
 import { destroyMatrixClient } from "@/lib/matrix";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -13,6 +14,7 @@ type SettingsTab =
   | "privacy"
   | "appearance"
   | "notifications"
+  | "voicevideo"
   | "sessions";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
@@ -20,6 +22,7 @@ const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "privacy", label: "Privacy & Safety", icon: "shield" },
   { id: "appearance", label: "Appearance", icon: "palette" },
   { id: "notifications", label: "Notifications", icon: "bell" },
+  { id: "voicevideo", label: "Voice & Video", icon: "mic" },
   { id: "sessions", label: "Sessions", icon: "devices" },
 ];
 
@@ -52,6 +55,13 @@ function TabIcon({ icon }: { icon: string }) {
       return (
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />
+        </svg>
+      );
+    case "mic":
+      return (
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+          <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8" />
         </svg>
       );
     case "devices":
@@ -143,6 +153,7 @@ export function SettingsPage() {
             {activeTab === "privacy" && <PrivacySection />}
             {activeTab === "appearance" && <AppearanceSection />}
             {activeTab === "notifications" && <NotificationsSection />}
+            {activeTab === "voicevideo" && <VoiceVideoSection />}
             {activeTab === "sessions" && <SessionsSection />}
           </div>
         </div>

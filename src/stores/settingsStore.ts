@@ -1,7 +1,15 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type ThemeMode = "dark" | "light" | "midnight" | "grape";
+export type ThemeMode =
+  | "dark"
+  | "light"
+  | "midnight"
+  | "grape"
+  | "darkGreen"
+  | "darkOrange"
+  | "darkRed"
+  | "darkBlue";
 export type FontSize = "small" | "normal" | "large";
 export type MessageDisplay = "cozy" | "compact";
 
@@ -21,6 +29,11 @@ interface SettingsState {
   enableNotificationSounds: boolean;
   notifyOnMentionsOnly: boolean;
 
+  // Voice & Video (device IDs from navigator.mediaDevices)
+  audioInputDeviceId: string | null;
+  audioOutputDeviceId: string | null;
+  videoInputDeviceId: string | null;
+
   // Actions
   setSendReadReceipts: (v: boolean) => void;
   setSendTypingIndicators: (v: boolean) => void;
@@ -31,6 +44,9 @@ interface SettingsState {
   setEnableNotifications: (v: boolean) => void;
   setEnableNotificationSounds: (v: boolean) => void;
   setNotifyOnMentionsOnly: (v: boolean) => void;
+  setAudioInputDeviceId: (v: string | null) => void;
+  setAudioOutputDeviceId: (v: string | null) => void;
+  setVideoInputDeviceId: (v: string | null) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -51,6 +67,11 @@ export const useSettingsStore = create<SettingsState>()(
       enableNotificationSounds: true,
       notifyOnMentionsOnly: false,
 
+      // Voice & Video defaults (null = default device)
+      audioInputDeviceId: null,
+      audioOutputDeviceId: null,
+      videoInputDeviceId: null,
+
       // Actions
       setSendReadReceipts: (v) => set({ sendReadReceipts: v }),
       setSendTypingIndicators: (v) => set({ sendTypingIndicators: v }),
@@ -61,6 +82,9 @@ export const useSettingsStore = create<SettingsState>()(
       setEnableNotifications: (v) => set({ enableNotifications: v }),
       setEnableNotificationSounds: (v) => set({ enableNotificationSounds: v }),
       setNotifyOnMentionsOnly: (v) => set({ notifyOnMentionsOnly: v }),
+      setAudioInputDeviceId: (v) => set({ audioInputDeviceId: v }),
+      setAudioOutputDeviceId: (v) => set({ audioOutputDeviceId: v }),
+      setVideoInputDeviceId: (v) => set({ videoInputDeviceId: v }),
     }),
     { name: "concord-settings" }
   )

@@ -4,6 +4,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { Avatar } from "@/components/common/Avatar";
 import { VoiceParticipant } from "./VoiceParticipant";
 import { VoiceControlBar } from "./VoiceControlBar";
+import { ScreenshareFeedView } from "./ScreenshareFeedView";
 
 interface VoiceChannelViewProps {
   roomId: string;
@@ -19,6 +20,7 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
   const clearError = useCallStore((s) => s.clearError);
   const userId = useAuthStore((s) => s.userId);
   const roomParticipants = useCallStore((s) => s.participantsByRoom.get(roomId) ?? []);
+  const screenshareFeeds = useCallStore((s) => s.screenshareFeeds);
 
   const isInThisCall = activeCallRoomId === roomId && connectionState === "connected";
   const isConnecting = activeCallRoomId === roomId && connectionState === "connecting";
@@ -146,20 +148,33 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
             <p className="text-sm text-text-muted">Connecting to voice...</p>
           </div>
         ) : (
-          /* In call - show participants grid */
-          <div className={`grid w-full max-w-3xl gap-4 ${gridCols}`}>
-            {localParticipant && (
-              <VoiceParticipant
-                participant={localParticipant}
-                isLocal
-              />
+          /* In call - show screenshares + participants grid */
+          <div className="flex w-full max-w-3xl flex-1 flex-col gap-4">
+            {screenshareFeeds.length > 0 && (
+              <div className="grid w-full gap-4 sm:grid-cols-2">
+                {screenshareFeeds.map((f) => (
+                  <ScreenshareFeedView
+                    key={f.feedId}
+                    feedId={f.feedId}
+                    displayName={f.displayName}
+                  />
+                ))}
+              </div>
             )}
-            {remoteParticipants.map((p) => (
-              <VoiceParticipant
-                key={p.feedId ?? p.userId}
-                participant={p}
-              />
-            ))}
+            <div className={`grid w-full gap-4 ${gridCols}`}>
+              {localParticipant && (
+                <VoiceParticipant
+                  participant={localParticipant}
+                  isLocal
+                />
+              )}
+              {remoteParticipants.map((p) => (
+                <VoiceParticipant
+                  key={p.feedId ?? p.userId}
+                  participant={p}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>

@@ -7,6 +7,15 @@ import { useAuthStore } from "@/stores/authStore";
 import { useMemberStore } from "@/stores/memberStore";
 import { getMatrixClient } from "@/lib/matrix";
 import { mxcToHttp } from "@/utils/matrixHelpers";
+import {
+  getRoleForPowerLevel,
+  getAssignableRoles,
+  getPowerLevelForRoleName,
+  POWER_LEVEL_OWNER,
+  POWER_LEVEL_ADMIN,
+  POWER_LEVEL_MODERATOR,
+} from "@/utils/roles";
+import { syncRoomMembers } from "@/lib/matrixEventHandlers";
 
 type Tab = "overview" | "members";
 
@@ -85,10 +94,13 @@ function OverviewTab({
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [canEdit, setCanEdit] = useState(false);
+  const [canManageAccess, setCanManageAccess] = useState(false);
+  const [viewAccessLevel, setViewAccessLevel] = useState(room.minPowerLevelToView ?? 0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const client = getMatrixClient();
   const homeserverUrl = client?.getHomeserverUrl() ?? "";
+  const updateRoom = useRoomStore((s) => s.updateRoom);
 
   useEffect(() => {
     if (!client || !roomId || !userId) return;
@@ -100,7 +112,12 @@ function OverviewTab({
     const userPower = powerLevels?.users?.[userId] ?? powerLevels?.users_default ?? 0;
     const requiredPower = powerLevels?.events?.["m.room.name"] ?? powerLevels?.state_default ?? 50;
     setCanEdit(userPower >= requiredPower);
+    setCanManageAccess(userPower >= POWER_LEVEL_ADMIN);
   }, [roomId, userId, client]);
+
+  useEffect(() => {
+    setViewAccessLevel(room.minPowerLevelToView ?? 0);
+  }, [room.minPowerLevelToView]);
 
   const displayAvatarUrl = roomAvatarMxc
     ? mxcToHttp(roomAvatarMxc, homeserverUrl)
@@ -123,7 +140,12 @@ function OverviewTab({
     }
   };
 
-  const hasChanges = name.trim() !== room.name || topic.trim() !== (room.topic ?? "") || roomAvatarMxc !== null;
+  const accessChanged = viewAccessLevel !== (room.minPowerLevelToView ?? 0);
+  const hasChanges =
+    name.trim() !== room.name ||
+    topic.trim() !== (room.topic ?? "") ||
+    roomAvatarMxc !== null ||
+    accessChanged;
 
   const handleSave = async () => {
     if (!client || !roomId) return;
@@ -138,6 +160,15 @@ function OverviewTab({
       }
       if (roomAvatarMxc) {
         await client.sendStateEvent(roomId, "m.room.avatar" as any, { url: roomAvatarMxc }, "");
+      }
+      if (accessChanged && !room.isSpace && !room.isDm) {
+        await client.sendStateEvent(
+          roomId,
+          "org.concord.room.access" as any,
+          { minPowerLevelToView: viewAccessLevel },
+          ""
+        );
+        updateRoom(roomId, { minPowerLevelToView: viewAccessLevel });
       }
       setSuccessMsg("Settings saved!");
       setTimeout(() => closeModal(), 600);
@@ -241,6 +272,28 @@ function OverviewTab({
         </button>
       )}
 
+      {/* Channel access (who can view) — only for channels, not spaces/DMs */}
+      {!room.isSpace && !room.isDm && canManageAccess && (
+        <div className="border-t border-bg-active pt-4">
+          <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
+            Who can view this channel
+          </label>
+          <p className="mb-2 text-xs text-text-muted">
+            Only users with at least this role will see the channel in the list.
+          </p>
+          <select
+            value={viewAccessLevel}
+            onChange={(e) => setViewAccessLevel(Number(e.target.value))}
+            className="w-full rounded-sm border border-bg-active bg-bg-input px-3 py-2 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value={0}>Everyone (Member+)</option>
+            <option value={POWER_LEVEL_MODERATOR}>Moderator and above</option>
+            <option value={POWER_LEVEL_ADMIN}>Admin and above</option>
+            <option value={POWER_LEVEL_OWNER}>Owner only</option>
+          </select>
+        </div>
+      )}
+
       {/* Invite */}
       <div className="border-t border-bg-active pt-4">
         <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
@@ -294,11 +347,13 @@ function OverviewTab({
 /* ──────── Members Tab ──────── */
 function MembersTab({ roomId, userId }: { roomId: string; userId: string | null }) {
   const members = useMemberStore((s) => s.membersByRoom.get(roomId) ?? []);
+  const updateMemberPowerLevel = useMemberStore((s) => s.updateMemberPowerLevel);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [myPowerLevel, setMyPowerLevel] = useState(0);
 
   const client = getMatrixClient();
+  const assignableRoles = getAssignableRoles();
 
   useEffect(() => {
     if (!client || !roomId || !userId) return;
@@ -343,11 +398,25 @@ function MembersTab({ roomId, userId }: { roomId: string; userId: string | null 
     }
   };
 
-  const getRoleName = (power: number) => {
-    if (power >= 100) return "Owner";
-    if (power >= 50) return "Admin";
-    if (power >= 25) return "Moderator";
-    return null;
+  const handleSetRole = async (targetUserId: string, roleName: string) => {
+    if (!client) return;
+    const newLevel = getPowerLevelForRoleName(roleName);
+    const member = members.find((m) => m.userId === targetUserId);
+    if (!member || member.powerLevel === newLevel) return;
+    const previousLevel = member.powerLevel;
+    setActionLoading(targetUserId);
+    setError(null);
+    updateMemberPowerLevel(roomId, targetUserId, newLevel);
+    try {
+      await client.setPowerLevel(roomId, targetUserId, newLevel);
+      syncRoomMembers(client, roomId);
+    } catch (err) {
+      console.error("Failed to set role:", err);
+      updateMemberPowerLevel(roomId, targetUserId, previousLevel);
+      setError(err instanceof Error ? err.message : "Failed to set role");
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   return (
@@ -355,8 +424,9 @@ function MembersTab({ roomId, userId }: { roomId: string; userId: string | null 
       <p className="text-xs text-text-muted">{members.length} members</p>
       <div className="max-h-80 overflow-y-auto">
         {sorted.map((member) => {
-          const role = getRoleName(member.powerLevel);
+          const role = getRoleForPowerLevel(member.powerLevel);
           const canManage = myPowerLevel > member.powerLevel && member.userId !== userId;
+          const canChangeRole = canManage && myPowerLevel >= POWER_LEVEL_OWNER;
           const isLoading = actionLoading === member.userId;
 
           return (
@@ -370,50 +440,63 @@ function MembersTab({ roomId, userId }: { roomId: string; userId: string | null 
                 size={36}
               />
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="truncate text-sm font-medium text-text-primary">
                     {member.displayName}
                   </span>
                   {role && (
-                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                      member.powerLevel >= 100
-                        ? "bg-yellow/20 text-yellow"
-                        : member.powerLevel >= 50
-                          ? "bg-red/20 text-red"
-                          : "bg-accent/20 text-accent"
-                    }`}>
-                      {role}
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${role.colorClass}`}
+                      title={role.description}
+                    >
+                      {role.name}
                     </span>
                   )}
                 </div>
                 <p className="truncate text-xs text-text-muted">{member.userId}</p>
               </div>
-              {canManage && !isLoading && (
-                <div className="hidden gap-1 group-hover:flex">
-                  <button
-                    onClick={() => handleKick(member.userId)}
-                    className="rounded p-1 text-text-muted hover:bg-bg-active hover:text-yellow"
-                    title="Kick"
+              <div className="flex items-center gap-1">
+                {canChangeRole && !isLoading && (
+                  <select
+                    value={role?.name ?? "Member"}
+                    onChange={(e) => handleSetRole(member.userId, e.target.value)}
+                    className="rounded border border-bg-active bg-bg-input px-2 py-1 text-xs text-text-primary outline-none focus:ring-1 focus:ring-accent"
+                    title="Change role"
                   >
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M18 6L6 18M6 6l12 12" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => handleBan(member.userId)}
-                    className="rounded p-1 text-text-muted hover:bg-bg-active hover:text-red"
-                    title="Ban"
-                  >
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M4.93 4.93l14.14 14.14" />
-                    </svg>
-                  </button>
-                </div>
-              )}
-              {isLoading && (
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-text-muted/30 border-t-text-muted" />
-              )}
+                    {assignableRoles.map((r) => (
+                      <option key={r.name} value={r.name}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {canManage && !isLoading && (
+                  <div className="hidden gap-1 group-hover:flex">
+                    <button
+                      onClick={() => handleKick(member.userId)}
+                      className="rounded p-1 text-text-muted hover:bg-bg-active hover:text-yellow"
+                      title="Kick"
+                    >
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M18 6L6 18M6 6l12 12" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleBan(member.userId)}
+                      className="rounded p-1 text-text-muted hover:bg-bg-active hover:text-red"
+                      title="Ban"
+                    >
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M4.93 4.93l14.14 14.14" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+                {isLoading && (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-text-muted/30 border-t-text-muted" />
+                )}
+              </div>
             </div>
           );
         })}

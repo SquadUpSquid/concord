@@ -15,6 +15,8 @@ function makeRoom(overrides: Partial<RoomSummary> = {}): RoomSummary {
     membership: "join",
     isDm: false,
     inviteSender: null,
+    minPowerLevelToView: 0,
+    myPowerLevel: 0,
     ...overrides,
   };
 }

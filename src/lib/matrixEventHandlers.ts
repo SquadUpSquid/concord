@@ -1,4 +1,4 @@
-import { MatrixClient, ClientEvent, RoomEvent, RoomMemberEvent, RoomStateEvent, MatrixEvent, Room, Membership } from "matrix-js-sdk";
+import { MatrixClient, ClientEvent, RoomEvent, RoomMemberEvent, RoomStateEvent, MatrixEvent, Room, Membership, SyncState } from "matrix-js-sdk";
 import { useRoomStore, RoomSummary, ChannelType, RoomMembership } from "@/stores/roomStore";
 import { requestNotificationPermission, sendMessageNotification, updateTitleWithUnread } from "@/lib/notifications";
 import { useMessageStore, Message } from "@/stores/messageStore";
@@ -140,6 +140,12 @@ function buildRoomSummary(room: Room, client: MatrixClient): RoomSummary {
     inviteSender = room.getDMInviter() ?? myMember?.events?.member?.getSender() ?? null;
   }
 
+  const powerLevels = room.currentState.getStateEvents("m.room.power_levels", "")?.getContent();
+  const myPowerLevel = powerLevels?.users?.[myUserId] ?? powerLevels?.users_default ?? 0;
+
+  const accessContent = room.currentState.getStateEvents("org.concord.room.access", "")?.getContent();
+  const minPowerLevelToView = typeof accessContent?.minPowerLevelToView === "number" ? accessContent.minPowerLevelToView : 0;
+
   return {
     roomId: room.roomId,
     name: room.name,
@@ -156,6 +162,8 @@ function buildRoomSummary(room: Room, client: MatrixClient): RoomSummary {
     membership,
     isDm,
     inviteSender,
+    minPowerLevelToView,
+    myPowerLevel,
   };
 }
 
@@ -186,7 +194,7 @@ function syncRoomList(client: MatrixClient): void {
   useRoomStore.getState().setRooms(roomMap);
 }
 
-function syncRoomMembers(client: MatrixClient, roomId: string): void {
+export function syncRoomMembers(client: MatrixClient, roomId: string): void {
   const room = client.getRoom(roomId);
   if (!room) return;
 
@@ -230,23 +238,32 @@ function updateReactionsForEvent(client: MatrixClient, roomId: string, eventId: 
   }
 }
 
+function applySyncReady(client: MatrixClient, hasInitiallySyncedRef: { current: boolean }) {
+  useRoomStore.getState().setSyncState("PREPARED");
+  if (!hasInitiallySyncedRef.current) {
+    hasInitiallySyncedRef.current = true;
+    syncRoomList(client);
+  }
+  updateTitleWithUnread();
+}
+
 export function registerEventHandlers(client: MatrixClient): void {
-  let hasInitiallySynced = false;
+  const hasInitiallySyncedRef = { current: false };
 
   client.on(ClientEvent.Sync, (state) => {
-    if (state === "PREPARED" || state === "SYNCING") {
-      useRoomStore.getState().setSyncState("PREPARED");
-
-      // Full room list rebuild only on initial sync
-      if (!hasInitiallySynced) {
-        hasInitiallySynced = true;
-        syncRoomList(client);
-      }
-      updateTitleWithUnread();
-    } else if (state === "ERROR") {
+    if (state === SyncState.Prepared || state === SyncState.Syncing) {
+      applySyncReady(client, hasInitiallySyncedRef);
+    } else if (state === SyncState.Error) {
       useRoomStore.getState().setSyncState("ERROR");
     }
   });
+
+  // Client may have already synced before we registered (e.g. right after startClient()).
+  // Check current state so we don't show a blank loading screen forever.
+  const current = client.getSyncState();
+  if (current === SyncState.Prepared || current === SyncState.Syncing) {
+    applySyncReady(client, hasInitiallySyncedRef);
+  }
 
   // Request notification permission once sync is ready
   requestNotificationPermission();

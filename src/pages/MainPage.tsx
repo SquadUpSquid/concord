@@ -1,13 +1,11 @@
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
-import { useRoomStore } from "@/stores/roomStore";
 import { initMatrixClient, getMatrixClient } from "@/lib/matrix";
 import { registerEventHandlers } from "@/lib/matrixEventHandlers";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { LoadingSpinner } from "@/components/common/LoadingSpinner";
 
 export function MainPage() {
-  const syncState = useRoomStore((s) => s.syncState);
   const [restoring, setRestoring] = useState(!getMatrixClient());
 
   useEffect(() => {
@@ -32,7 +30,10 @@ export function MainPage() {
     }
   }, []);
 
-  if (restoring || syncState === "STOPPED") {
+  // Only show loading while the client is being created/restored.
+  // Once we have a client, show the app so we never get a blank screen.
+  // Room list will populate when sync completes (handled in event handlers).
+  if (restoring) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-bg-tertiary">
         <div className="flex flex-col items-center gap-4">

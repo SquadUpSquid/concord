@@ -35,7 +35,7 @@ export function ServerSidebar() {
   const homeUnread = unreadCounts.get(null) ?? 0;
 
   return (
-    <div className="flex w-[72px] flex-col items-center gap-2 overflow-y-auto bg-bg-tertiary py-3">
+    <div className="flex w-[72px] flex-col items-center gap-2 overflow-y-auto scrollbar-none bg-bg-tertiary py-3">
       {/* Home button */}
       <div className="group relative">
         {/* Selection pill */}

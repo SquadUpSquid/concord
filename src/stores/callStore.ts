@@ -1,10 +1,12 @@
 import { create } from "zustand";
 import {
+  ClientEvent,
   GroupCall,
   GroupCallEvent,
   GroupCallIntent,
   GroupCallState,
   GroupCallType,
+  SyncState,
 } from "matrix-js-sdk";
 import { CallFeed, CallFeedEvent } from "matrix-js-sdk/lib/webrtc/callFeed";
 import { getMatrixClient } from "@/lib/matrix";
@@ -31,6 +33,7 @@ interface CallState {
   isMicMuted: boolean;
   isVideoMuted: boolean;
   isDeafened: boolean;
+  wasMicMutedBeforeDeafen: boolean;
   isScreenSharing: boolean;
   participants: Map<string, CallParticipant>;
   activeSpeakerId: string | null;
@@ -202,6 +205,7 @@ const initialState = {
   isMicMuted: false,
   isVideoMuted: true,
   isDeafened: false,
+  wasMicMutedBeforeDeafen: false,
   isScreenSharing: false,
   participants: new Map<string, CallParticipant>(),
   activeSpeakerId: null,
@@ -248,9 +252,23 @@ export const useCallStore = create<CallState>()((set, get) => ({
     set({ connectionState: "connecting", activeCallRoomId: roomId, error: null });
 
     try {
-      // Wait for room state to be ready
+      // Wait for initial sync if not done yet (SDK creates call handlers after sync)
+      if (!client.isInitialSyncComplete()) {
+        await new Promise<void>((resolve) => {
+          const onSync = (state: SyncState) => {
+            if (state === SyncState.Prepared || state === SyncState.Syncing) {
+              client.off(ClientEvent.Sync, onSync);
+              resolve();
+            }
+          };
+          client.on(ClientEvent.Sync, onSync);
+        });
+      }
+
       if (!client.groupCallEventHandler) {
-        throw new Error("Group call support not initialized. Please restart the app.");
+        throw new Error(
+          "Voice calls are not supported in this environment. WebRTC may not be available."
+        );
       }
       await client.groupCallEventHandler.waitUntilRoomReadyForGroupCalls(roomId);
 
@@ -333,11 +351,19 @@ export const useCallStore = create<CallState>()((set, get) => ({
 
   toggleDeafen: () => {
     const newDeafened = !get().isDeafened;
-    set({ isDeafened: newDeafened });
-    // Discord behavior: mute mic when deafening
     if (newDeafened && activeGroupCall) {
+      // Deafening: save current mic state, then mute
+      set({ isDeafened: true, wasMicMutedBeforeDeafen: get().isMicMuted });
       activeGroupCall.setMicrophoneMuted(true);
       set({ isMicMuted: true });
+    } else if (!newDeafened && activeGroupCall) {
+      // Un-deafening: restore previous mic state
+      const restoreMuted = get().wasMicMutedBeforeDeafen;
+      set({ isDeafened: false });
+      activeGroupCall.setMicrophoneMuted(restoreMuted);
+      set({ isMicMuted: restoreMuted });
+    } else {
+      set({ isDeafened: newDeafened });
     }
   },
 

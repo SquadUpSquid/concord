@@ -48,6 +48,9 @@ async function createClient(
     store,
     timelineSupport: true,
     fetchFn: tauriFetch as unknown as typeof globalThis.fetch,
+    fallbackICEServerAllowed: true,
+    iceCandidatePoolSize: 20,
+    useE2eForGroupCall: false,
   });
 
   await store.startup();

@@ -1,4 +1,5 @@
 import { useRoomStore } from "@/stores/roomStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 let permissionGranted = false;
 
@@ -19,11 +20,15 @@ export function sendMessageNotification(
   senderName: string,
   body: string,
   roomId: string,
-  roomName: string
+  roomName: string,
+  isMention?: boolean
 ): void {
+  const settings = useSettingsStore.getState();
+  if (!settings.enableNotifications) return;
+  if (settings.notifyOnMentionsOnly && !isMention) return;
+
   if (!permissionGranted && Notification.permission !== "granted") return;
 
-  // Don't notify if the window is focused and we're viewing this room
   if (document.hasFocus()) {
     const currentRoomId = useRoomStore.getState().selectedRoomId;
     if (currentRoomId === roomId) return;
@@ -34,7 +39,7 @@ export function sendMessageNotification(
   const notification = new Notification(`${senderName} in ${roomName}`, {
     body: truncatedBody,
     tag: roomId,
-    silent: false,
+    silent: !settings.enableNotificationSounds,
   });
 
   notification.onclick = () => {
@@ -43,7 +48,6 @@ export function sendMessageNotification(
     notification.close();
   };
 
-  // Auto-close after 5 seconds
   setTimeout(() => notification.close(), 5000);
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useMessageStore } from "@/stores/messageStore";
 import { useRoomStore } from "@/stores/roomStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { MessageItem } from "./MessageItem";
 import { getMatrixClient } from "@/lib/matrix";
 import { loadMoreMessages } from "@/lib/matrixEventHandlers";
@@ -28,6 +29,8 @@ export function MessageList({ roomId }: MessageListProps) {
     }
   }, [messages.length]);
 
+  const sendReadReceipts = useSettingsStore((s) => s.sendReadReceipts);
+
   // Send read receipt when viewing this room and when new messages arrive
   useEffect(() => {
     if (!messages.length) return;
@@ -37,12 +40,14 @@ export function MessageList({ roomId }: MessageListProps) {
     const room = client.getRoom(roomId);
     if (!room) return;
 
-    const lastEvent = room.timeline[room.timeline.length - 1];
-    if (lastEvent) {
-      client.sendReadReceipt(lastEvent).catch(() => {});
+    if (sendReadReceipts) {
+      const lastEvent = room.timeline[room.timeline.length - 1];
+      if (lastEvent) {
+        client.sendReadReceipt(lastEvent).catch(() => {});
+      }
     }
     useRoomStore.getState().updateRoom(roomId, { unreadCount: 0 });
-  }, [roomId, messages.length]);
+  }, [roomId, messages.length, sendReadReceipts]);
 
   const handleScroll = useCallback(() => {
     if (!listRef.current) return;

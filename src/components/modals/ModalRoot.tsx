@@ -5,6 +5,7 @@ import { RoomSettingsModal } from "./RoomSettingsModal";
 import { LeaveRoomModal } from "./LeaveRoomModal";
 import { CreateDmModal } from "./CreateDmModal";
 import { UserSettingsModal } from "./UserSettingsModal";
+import { SettingsPage } from "@/components/settings/SettingsPage";
 
 export function ModalRoot() {
   const activeModal = useUiStore((s) => s.activeModal);
@@ -22,6 +23,8 @@ export function ModalRoot() {
       return <CreateDmModal />;
     case "userSettings":
       return <UserSettingsModal />;
+    case "settings":
+      return <SettingsPage />;
     default:
       return null;
   }

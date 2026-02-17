@@ -28,11 +28,28 @@
   --radius-full: 9999px;
 }
 
+:root {
+  --chat-font-size: 15px;
+}
+
 body {
   @apply bg-bg-primary text-text-primary font-sans antialiased;
   margin: 0;
   overflow: hidden;
   user-select: none;
+}
+
+/* Chat font size from settings */
+.message-content {
+  font-size: var(--chat-font-size);
+}
+
+/* Compact message display */
+[data-display="compact"] .message-item-cozy {
+  display: none;
+}
+[data-display="cozy"] .message-item-compact {
+  display: none;
 }
 
 ::-webkit-scrollbar {

@@ -1,5 +1,6 @@
 import { Message, useMessageStore } from "@/stores/messageStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { formatTimestamp } from "@/utils/formatters";
 import { Avatar } from "@/components/common/Avatar";
 import { UserPopover } from "@/components/common/UserPopover";
@@ -80,6 +81,7 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
   const setEditingMessage = useMessageStore((s) => s.setEditingMessage);
   const myUserId = useAuthStore((s) => s.userId);
   const isOwnMessage = message.senderId === myUserId;
+  const messageDisplay = useSettingsStore((s) => s.messageDisplay);
 
   // Close full picker on click outside
   useEffect(() => {
@@ -267,6 +269,45 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
     </div>
   );
 
+  // Compact mode: every message inline with timestamp + sender
+  if (messageDisplay === "compact") {
+    return (
+      <div className="group relative flex items-start gap-0 py-0.5 pl-2 hover:bg-bg-hover/50">
+        {actionButtons}
+        {deleteConfirmPopover}
+        <span className="mr-2 mt-0.5 flex-shrink-0 text-[11px] leading-5 text-text-muted">
+          {new Date(message.timestamp).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </span>
+        <div className="min-w-0 flex-1">
+          {message.replyToEvent && <ReplyContext reply={message.replyToEvent} />}
+          <div className="flex items-baseline gap-1">
+            <button
+              className="flex-shrink-0 text-sm font-medium text-text-primary hover:underline"
+              onClick={(e) => setPopoverAnchor(e.currentTarget)}
+            >
+              {message.senderName}
+            </button>
+            <MessageBody message={message} />
+          </div>
+          <ReactionBar reactions={message.reactions} eventId={message.eventId} roomId={message.roomId} />
+        </div>
+        {popoverAnchor && (
+          <UserPopover
+            userId={message.senderId}
+            displayName={message.senderName}
+            avatarUrl={message.senderAvatar}
+            anchorEl={popoverAnchor}
+            onClose={() => setPopoverAnchor(null)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Cozy mode (default)
   if (showHeader) {
     return (
       <div className="group relative mt-4 flex gap-3 py-0.5 hover:bg-bg-hover/50">

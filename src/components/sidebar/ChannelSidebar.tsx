@@ -7,7 +7,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { usePresenceStore } from "@/stores/presenceStore";
 import { Avatar } from "@/components/common/Avatar";
 import { ConnectedCallBar } from "@/components/voice/ConnectedCallBar";
-import { destroyMatrixClient, getMatrixClient } from "@/lib/matrix";
+import { getMatrixClient } from "@/lib/matrix";
 import { mxcToHttp } from "@/utils/matrixHelpers";
 
 export function ChannelSidebar() {
@@ -48,11 +48,6 @@ export function ChannelSidebar() {
   const spaceName = selectedSpaceId
     ? rooms.get(selectedSpaceId)?.name ?? "Space"
     : "Direct Messages";
-
-  const handleLogout = async () => {
-    await destroyMatrixClient();
-    useAuthStore.getState().logout();
-  };
 
   // Get user's display name and avatar from the Matrix client
   const client = getMatrixClient();
@@ -218,7 +213,7 @@ export function ChannelSidebar() {
       {/* User section */}
       <div className="flex items-center gap-2 border-t border-bg-tertiary bg-bg-floating/50 px-2 py-2">
         <button
-          onClick={() => openModal("userSettings")}
+          onClick={() => openModal("settings")}
           className="flex-shrink-0 cursor-pointer rounded-full transition-opacity hover:opacity-80"
           title="User settings"
         >
@@ -238,22 +233,13 @@ export function ChannelSidebar() {
           </p>
         </div>
         <button
-          onClick={() => openModal("userSettings")}
+          onClick={() => openModal("settings")}
           className="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
           title="User settings"
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
-          </svg>
-        </button>
-        <button
-          onClick={handleLogout}
-          className="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
-          title="Log out"
-        >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
           </svg>
         </button>
       </div>

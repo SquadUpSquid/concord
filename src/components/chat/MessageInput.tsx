@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { getMatrixClient } from "@/lib/matrix";
 import { useMessageStore } from "@/stores/messageStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { EmojiPicker } from "./EmojiPicker";
 import { searchEmojis, type EmojiEntry } from "@/lib/emojiData";
 
@@ -66,14 +67,17 @@ export function MessageInput({ roomId }: MessageInputProps) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showEmojiPicker]);
 
+  const typingEnabled = useSettingsStore((s) => s.sendTypingIndicators);
+
   const sendTyping = useCallback(
     (typing: boolean) => {
+      if (!typingEnabled) return;
       const client = getMatrixClient();
       if (!client || isTyping.current === typing) return;
       isTyping.current = typing;
       client.sendTyping(roomId, typing, typing ? 30000 : 0).catch(() => {});
     },
-    [roomId]
+    [roomId, typingEnabled]
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

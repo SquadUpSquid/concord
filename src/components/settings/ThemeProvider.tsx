@@ -1,0 +1,77 @@
+import { useEffect } from "react";
+import { useSettingsStore } from "@/stores/settingsStore";
+
+const THEME_VARS: Record<string, Record<string, string>> = {
+  dark: {
+    "--color-bg-primary": "#313338",
+    "--color-bg-secondary": "#2b2d31",
+    "--color-bg-tertiary": "#1e1f22",
+    "--color-bg-floating": "#111214",
+    "--color-bg-input": "#383a40",
+    "--color-bg-hover": "#35373c",
+    "--color-bg-active": "#404249",
+    "--color-text-primary": "#f2f3f5",
+    "--color-text-secondary": "#b5bac1",
+    "--color-text-muted": "#949ba4",
+    "--color-text-link": "#00a8fc",
+  },
+  midnight: {
+    "--color-bg-primary": "#0e0e12",
+    "--color-bg-secondary": "#0a0a0e",
+    "--color-bg-tertiary": "#060608",
+    "--color-bg-floating": "#040405",
+    "--color-bg-input": "#1a1a22",
+    "--color-bg-hover": "#151519",
+    "--color-bg-active": "#1e1e28",
+    "--color-text-primary": "#e0e0e8",
+    "--color-text-secondary": "#a0a0b0",
+    "--color-text-muted": "#70708a",
+    "--color-text-link": "#00a8fc",
+  },
+  light: {
+    "--color-bg-primary": "#ffffff",
+    "--color-bg-secondary": "#f2f3f5",
+    "--color-bg-tertiary": "#e3e5e8",
+    "--color-bg-floating": "#ffffff",
+    "--color-bg-input": "#e3e5e8",
+    "--color-bg-hover": "#ebedef",
+    "--color-bg-active": "#d4d7dc",
+    "--color-text-primary": "#060607",
+    "--color-text-secondary": "#4e5058",
+    "--color-text-muted": "#80848e",
+    "--color-text-link": "#006ce7",
+  },
+};
+
+const FONT_SIZE_MAP: Record<string, string> = {
+  small: "13px",
+  normal: "15px",
+  large: "18px",
+};
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const theme = useSettingsStore((s) => s.theme);
+  const fontSize = useSettingsStore((s) => s.fontSize);
+  const messageDisplay = useSettingsStore((s) => s.messageDisplay);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const vars = THEME_VARS[theme] ?? THEME_VARS.dark;
+    for (const [key, value] of Object.entries(vars)) {
+      root.style.setProperty(key, value);
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--chat-font-size",
+      FONT_SIZE_MAP[fontSize] ?? "15px"
+    );
+  }, [fontSize]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-display", messageDisplay);
+  }, [messageDisplay]);
+
+  return <>{children}</>;
+}

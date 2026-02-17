@@ -1,12 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Modal } from "@/components/common/Modal";
 import { Avatar } from "@/components/common/Avatar";
+import { ThemedSelect } from "@/components/common/ThemedSelect";
 import { useUiStore } from "@/stores/uiStore";
 import { useRoomStore } from "@/stores/roomStore";
 import { useAuthStore } from "@/stores/authStore";
-import { useMemberStore } from "@/stores/memberStore";
+import { useMemberStore, type Member } from "@/stores/memberStore";
 import { getMatrixClient } from "@/lib/matrix";
 import { mxcToHttp } from "@/utils/matrixHelpers";
+import { EmojiPicker } from "@/components/chat/EmojiPicker";
 import {
   getRoleForPowerLevel,
   getAssignableRoles,
@@ -96,7 +98,21 @@ function OverviewTab({
   const [canEdit, setCanEdit] = useState(false);
   const [canManageAccess, setCanManageAccess] = useState(false);
   const [viewAccessLevel, setViewAccessLevel] = useState(room.minPowerLevelToView ?? 0);
+  const [showNameEmojiPicker, setShowNameEmojiPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const nameEmojiRef = useRef<HTMLDivElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!showNameEmojiPicker) return;
+    const handleClick = (e: MouseEvent) => {
+      if (nameEmojiRef.current && !nameEmojiRef.current.contains(e.target as Node)) {
+        setShowNameEmojiPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showNameEmojiPicker]);
 
   const client = getMatrixClient();
   const homeserverUrl = client?.getHomeserverUrl() ?? "";
@@ -238,13 +254,43 @@ function OverviewTab({
         <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
           Channel Name
         </label>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          disabled={!canEdit}
-          className="w-full rounded-sm bg-bg-input p-2.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
-        />
+        <div className="relative flex items-center">
+          <input
+            ref={nameInputRef}
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={!canEdit}
+            className="w-full rounded-sm bg-bg-input p-2.5 pr-10 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+          />
+          {canEdit && (
+            <div className="absolute right-1" ref={nameEmojiRef}>
+              <button
+                type="button"
+                onClick={() => setShowNameEmojiPicker(!showNameEmojiPicker)}
+                className="rounded p-1 text-text-muted hover:text-text-primary"
+                title="Add emoji"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" />
+                </svg>
+              </button>
+              {showNameEmojiPicker && (
+                <div className="absolute bottom-full right-0 z-50 mb-2">
+                  <EmojiPicker
+                    onSelect={(emoji) => {
+                      setName((prev) => prev + emoji);
+                      setShowNameEmojiPicker(false);
+                      nameInputRef.current?.focus();
+                    }}
+                    onClose={() => setShowNameEmojiPicker(false)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Topic */}
@@ -281,16 +327,16 @@ function OverviewTab({
           <p className="mb-2 text-xs text-text-muted">
             Only users with at least this role will see the channel in the list.
           </p>
-          <select
-            value={viewAccessLevel}
-            onChange={(e) => setViewAccessLevel(Number(e.target.value))}
-            className="w-full rounded-sm border border-bg-active bg-bg-input px-3 py-2 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent"
-          >
-            <option value={0}>Everyone (Member+)</option>
-            <option value={POWER_LEVEL_MODERATOR}>Moderator and above</option>
-            <option value={POWER_LEVEL_ADMIN}>Admin and above</option>
-            <option value={POWER_LEVEL_OWNER}>Owner only</option>
-          </select>
+          <ThemedSelect
+            value={String(viewAccessLevel)}
+            onChange={(v) => setViewAccessLevel(Number(v))}
+            options={[
+              { value: "0", label: "Everyone (Member+)" },
+              { value: String(POWER_LEVEL_MODERATOR), label: "Moderator and above" },
+              { value: String(POWER_LEVEL_ADMIN), label: "Admin and above" },
+              { value: String(POWER_LEVEL_OWNER), label: "Owner only" },
+            ]}
+          />
         </div>
       )}
 
@@ -345,8 +391,11 @@ function OverviewTab({
 }
 
 /* ──────── Members Tab ──────── */
+const EMPTY_MEMBERS: Member[] = [];
+
 function MembersTab({ roomId, userId }: { roomId: string; userId: string | null }) {
-  const members = useMemberStore((s) => s.membersByRoom.get(roomId) ?? []);
+  const membersByRoom = useMemberStore((s) => s.membersByRoom);
+  const members = membersByRoom.get(roomId) ?? EMPTY_MEMBERS;
   const updateMemberPowerLevel = useMemberStore((s) => s.updateMemberPowerLevel);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -354,6 +403,10 @@ function MembersTab({ roomId, userId }: { roomId: string; userId: string | null 
 
   const client = getMatrixClient();
   const assignableRoles = getAssignableRoles();
+  const roleOptions = useMemo(
+    () => assignableRoles.map((r) => ({ value: r.name, label: r.name })),
+    [assignableRoles]
+  );
 
   useEffect(() => {
     if (!client || !roomId || !userId) return;
@@ -457,18 +510,13 @@ function MembersTab({ roomId, userId }: { roomId: string; userId: string | null 
               </div>
               <div className="flex items-center gap-1">
                 {canChangeRole && !isLoading && (
-                  <select
+                  <ThemedSelect
                     value={role?.name ?? "Member"}
-                    onChange={(e) => handleSetRole(member.userId, e.target.value)}
-                    className="rounded border border-bg-active bg-bg-input px-2 py-1 text-xs text-text-primary outline-none focus:ring-1 focus:ring-accent"
+                    onChange={(v) => handleSetRole(member.userId, v)}
+                    options={roleOptions}
                     title="Change role"
-                  >
-                    {assignableRoles.map((r) => (
-                      <option key={r.name} value={r.name}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </select>
+                    className="w-28"
+                  />
                 )}
                 {canManage && !isLoading && (
                   <div className="hidden gap-1 group-hover:flex">

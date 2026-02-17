@@ -1,6 +1,7 @@
 import { useUiStore } from "@/stores/uiStore";
 import { useCallStore, CallParticipant } from "@/stores/callStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useChannelPrefsStore } from "@/stores/channelPrefsStore";
 import { Avatar } from "@/components/common/Avatar";
 import type { ChannelType } from "@/stores/roomStore";
 
@@ -62,7 +63,8 @@ export function ChannelItem({
   const openContextMenu = useUiStore((s) => s.openContextMenu);
   const activeCallRoomId = useCallStore((s) => s.activeCallRoomId);
   const connectionState = useCallStore((s) => s.connectionState);
-  const hasUnread = unreadCount > 0;
+  const isMuted = useChannelPrefsStore((s) => s.prefs[roomId]?.isMuted ?? false);
+  const hasUnread = !isMuted && unreadCount > 0;
   const isActiveVoice = channelType === "voice" && activeCallRoomId === roomId && connectionState === "connected";
 
   // Get participants for this voice channel (from state events or active call).
@@ -110,6 +112,12 @@ export function ChannelItem({
         <span className={`flex-1 truncate text-sm ${hasUnread && !isSelected ? "font-semibold" : ""}`}>
           {name}
         </span>
+        {isMuted && (
+          <svg className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M13.73 21a2 2 0 01-3.46 0M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <line x1="1" y1="1" x2="23" y2="23" />
+          </svg>
+        )}
         {isActiveVoice && (
           <span className="text-[10px] text-green">LIVE</span>
         )}

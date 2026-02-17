@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useRoomStore } from "@/stores/roomStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useChannelOrderStore, sortChannelsByOrder } from "@/stores/channelOrderStore";
+import { useChannelPrefsStore } from "@/stores/channelPrefsStore";
 import type { ChannelListType } from "@/stores/channelOrderStore";
 import { ChannelItem } from "./ChannelItem";
 import { InviteItem } from "./InviteItem";
@@ -28,6 +29,9 @@ export function ChannelSidebar() {
 
   const getOrder = useChannelOrderStore((s) => s.getOrder);
   const reorderChannel = useChannelOrderStore((s) => s.reorderChannel);
+  const channelPrefs = useChannelPrefsStore((s) => s.prefs);
+
+  const [favoritesCollapsed, setFavoritesCollapsed] = useState(false);
 
   const myPresence = usePresenceStore(
     (s) => s.presenceByUser.get(userId ?? "")?.presence ?? "online"
@@ -43,8 +47,6 @@ export function ChannelSidebar() {
     if (r.membership !== "join") return false;
     if (selectedSpaceId === null) return r.parentSpaceId === null;
     if (r.parentSpaceId !== selectedSpaceId) return false;
-    // Only enforce access check when an explicit restriction was set (> 0).
-    // Default of 0 means "everyone", so skip the check entirely for that.
     const required = r.minPowerLevelToView ?? 0;
     if (required > 0) {
       const myLevel = r.myPowerLevel ?? 0;
@@ -53,8 +55,12 @@ export function ChannelSidebar() {
     return true;
   });
 
-  const textChannelsRaw = channels.filter((ch) => ch.channelType === "text");
-  const voiceChannelsRaw = channels.filter((ch) => ch.channelType === "voice");
+  // Separate favorite channels
+  const favoriteChannels = channels.filter((ch) => channelPrefs[ch.roomId]?.isFavorite);
+  const nonFavoriteChannels = channels.filter((ch) => !channelPrefs[ch.roomId]?.isFavorite);
+
+  const textChannelsRaw = nonFavoriteChannels.filter((ch) => ch.channelType === "text");
+  const voiceChannelsRaw = nonFavoriteChannels.filter((ch) => ch.channelType === "voice");
 
   const textOrder = selectedSpaceId ? getOrder(selectedSpaceId, "text") : [];
   const voiceOrder = selectedSpaceId ? getOrder(selectedSpaceId, "voice") : [];
@@ -152,6 +158,41 @@ export function ChannelSidebar() {
           <p className="px-2 py-4 text-center text-xs text-text-muted">
             No channels
           </p>
+        )}
+
+        {/* Favorites Section */}
+        {favoriteChannels.length > 0 && (
+          <div className="mb-1">
+            <button
+              onClick={() => setFavoritesCollapsed(!favoritesCollapsed)}
+              className="group flex w-full items-center gap-0.5 px-1 py-1.5"
+            >
+              <svg
+                className={`h-3 w-3 text-text-muted transition-transform ${
+                  favoritesCollapsed ? "-rotate-90" : ""
+                }`}
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M7 10l5 5 5-5z" />
+              </svg>
+              <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-yellow group-hover:text-yellow/80">
+                Favorites — {favoriteChannels.length}
+              </span>
+            </button>
+            {!favoritesCollapsed &&
+              favoriteChannels.map((ch) => (
+                <ChannelItem
+                  key={ch.roomId}
+                  roomId={ch.roomId}
+                  name={ch.name}
+                  channelType={ch.channelType}
+                  unreadCount={ch.unreadCount}
+                  isSelected={selectedRoomId === ch.roomId}
+                  onClick={() => selectRoom(ch.roomId)}
+                />
+              ))}
+          </div>
         )}
 
         {/* Text Channels Section */}

@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { getMatrixClient } from "@/lib/matrix";
+import { ThemedSelect } from "@/components/common/ThemedSelect";
 
 interface DeviceInfo {
   deviceId: string;
@@ -67,6 +68,19 @@ export function VoiceVideoSection() {
   const audioOutputs = devices.filter((d) => d.kind === "audiooutput");
   const videoInputs = devices.filter((d) => d.kind === "videoinput");
 
+  const audioInputOptions = useMemo(
+    () => [{ value: "", label: DEFAULT_LABEL }, ...audioInputs.map((d) => ({ value: d.deviceId, label: d.label }))],
+    [audioInputs]
+  );
+  const audioOutputOptions = useMemo(
+    () => [{ value: "", label: DEFAULT_LABEL }, ...audioOutputs.map((d) => ({ value: d.deviceId, label: d.label }))],
+    [audioOutputs]
+  );
+  const videoInputOptions = useMemo(
+    () => [{ value: "", label: DEFAULT_LABEL }, ...videoInputs.map((d) => ({ value: d.deviceId, label: d.label }))],
+    [videoInputs]
+  );
+
   const applyInputDevicesToSdk = useCallback(
     (audioId: string | null, videoId: string | null) => {
       const client = getMatrixClient();
@@ -132,36 +146,22 @@ export function VoiceVideoSection() {
           <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-text-secondary">
             Microphone
           </label>
-          <select
+          <ThemedSelect
             value={audioInputDeviceId ?? ""}
-            onChange={(e) => handleAudioInputChange(e.target.value)}
-            className="w-full rounded-sm border border-bg-active bg-bg-input px-3 py-2 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent"
-          >
-            <option value="">{DEFAULT_LABEL}</option>
-            {audioInputs.map((d) => (
-              <option key={d.deviceId} value={d.deviceId}>
-                {d.label}
-              </option>
-            ))}
-          </select>
+            options={audioInputOptions}
+            onChange={handleAudioInputChange}
+          />
         </div>
 
         <div>
           <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-text-secondary">
             Speaker / Output
           </label>
-          <select
+          <ThemedSelect
             value={audioOutputDeviceId ?? ""}
-            onChange={(e) => handleAudioOutputChange(e.target.value)}
-            className="w-full rounded-sm border border-bg-active bg-bg-input px-3 py-2 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent"
-          >
-            <option value="">{DEFAULT_LABEL}</option>
-            {audioOutputs.map((d) => (
-              <option key={d.deviceId} value={d.deviceId}>
-                {d.label}
-              </option>
-            ))}
-          </select>
+            options={audioOutputOptions}
+            onChange={handleAudioOutputChange}
+          />
           <p className="mt-1 text-[11px] text-text-muted">
             Used for hearing other participants. Applied when you join a call.
           </p>
@@ -171,18 +171,11 @@ export function VoiceVideoSection() {
           <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-text-secondary">
             Camera
           </label>
-          <select
+          <ThemedSelect
             value={videoInputDeviceId ?? ""}
-            onChange={(e) => handleVideoInputChange(e.target.value)}
-            className="w-full rounded-sm border border-bg-active bg-bg-input px-3 py-2 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent"
-          >
-            <option value="">{DEFAULT_LABEL}</option>
-            {videoInputs.map((d) => (
-              <option key={d.deviceId} value={d.deviceId}>
-                {d.label}
-              </option>
-            ))}
-          </select>
+            options={videoInputOptions}
+            onChange={handleVideoInputChange}
+          />
           <p className="mt-1 text-[11px] text-text-muted">
             Used when you turn your camera on in a voice or video call. Change takes effect when you turn the camera on (or toggle it off and on).
           </p>

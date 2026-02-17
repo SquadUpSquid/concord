@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useUiStore } from "@/stores/uiStore";
 import { useRoomStore } from "@/stores/roomStore";
+import { useChannelPrefsStore } from "@/stores/channelPrefsStore";
 import { getMatrixClient } from "@/lib/matrix";
 
 export function RoomContextMenu() {
@@ -30,9 +31,15 @@ export function RoomContextMenu() {
     return () => document.removeEventListener("keydown", handleKey);
   }, [contextMenu, closeContextMenu]);
 
+  const toggleFavorite = useChannelPrefsStore((s) => s.toggleFavorite);
+  const toggleMuted = useChannelPrefsStore((s) => s.toggleMuted);
+  const prefs = useChannelPrefsStore((s) => s.prefs);
+
   if (!contextMenu) return null;
 
   const roomId = contextMenu.roomId;
+  const isFav = prefs[roomId]?.isFavorite ?? false;
+  const isMuted = prefs[roomId]?.isMuted ?? false;
 
   const handleMarkRead = () => {
     const client = getMatrixClient();
@@ -79,6 +86,36 @@ export function RoomContextMenu() {
         </svg>
         Mark as Read
       </button>
+
+      <button
+        onClick={() => { toggleFavorite(roomId); closeContextMenu(); }}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+      >
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill={isFav ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+          <path d="M12 2l3 7h7l-5.5 4.5 2 7L12 16l-6.5 4.5 2-7L2 9h7l3-7z" />
+        </svg>
+        {isFav ? "Unfavorite" : "Favorite"}
+      </button>
+
+      <button
+        onClick={() => { toggleMuted(roomId); closeContextMenu(); }}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+      >
+        {isMuted ? (
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 01-3.46 0" />
+          </svg>
+        ) : (
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M13.73 21a2 2 0 01-3.46 0M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <line x1="1" y1="1" x2="23" y2="23" />
+          </svg>
+        )}
+        {isMuted ? "Unmute Notifications" : "Mute Notifications"}
+      </button>
+
+      <div className="mx-2 my-1 h-px bg-bg-active" />
 
       <button
         onClick={handleSettings}

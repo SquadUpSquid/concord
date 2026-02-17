@@ -125,6 +125,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     for (const [key, value] of Object.entries(vars)) {
       root.style.setProperty(key, value);
     }
+    // Tell the browser whether native controls (selects, scrollbars, etc.)
+    // should render in light or dark mode.
+    root.style.colorScheme = theme === "light" ? "light" : "dark";
   }, [theme]);
 
   useEffect(() => {

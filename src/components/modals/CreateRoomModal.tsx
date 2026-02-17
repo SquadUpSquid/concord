@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Modal } from "@/components/common/Modal";
 import { useUiStore } from "@/stores/uiStore";
 import { useRoomStore } from "@/stores/roomStore";
@@ -6,6 +6,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { getMatrixClient } from "@/lib/matrix";
 import { Visibility, Preset } from "matrix-js-sdk";
 import type { ChannelType } from "@/stores/roomStore";
+import { EmojiPicker } from "@/components/chat/EmojiPicker";
 
 export function CreateRoomModal() {
   const closeModal = useUiStore((s) => s.closeModal);
@@ -20,6 +21,20 @@ export function CreateRoomModal() {
   const [encrypted, setEncrypted] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const emojiRef = useRef<HTMLDivElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!showEmojiPicker) return;
+    const handleClick = (e: MouseEvent) => {
+      if (emojiRef.current && !emojiRef.current.contains(e.target as Node)) {
+        setShowEmojiPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showEmojiPicker]);
 
   const handleCreate = async () => {
     if (!name.trim()) return;
@@ -122,15 +137,43 @@ export function CreateRoomModal() {
           <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
             Channel Name
           </label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-            placeholder={channelType === "text" ? "new-channel" : "General Voice"}
-            className="w-full rounded-sm bg-bg-input p-2.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent"
-            autoFocus
-          />
+          <div className="relative flex items-center gap-1">
+            <input
+              ref={nameInputRef}
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+              placeholder={channelType === "text" ? "new-channel" : "General Voice"}
+              className="w-full rounded-sm bg-bg-input p-2.5 pr-10 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent"
+              autoFocus
+            />
+            <div className="absolute right-1" ref={emojiRef}>
+              <button
+                type="button"
+                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                className="rounded p-1 text-text-muted hover:text-text-primary"
+                title="Add emoji"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" />
+                </svg>
+              </button>
+              {showEmojiPicker && (
+                <div className="absolute bottom-full right-0 z-50 mb-2">
+                  <EmojiPicker
+                    onSelect={(emoji) => {
+                      setName((prev) => prev + emoji);
+                      setShowEmojiPicker(false);
+                      nameInputRef.current?.focus();
+                    }}
+                    onClose={() => setShowEmojiPicker(false)}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {channelType === "text" && (

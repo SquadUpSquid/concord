@@ -30,6 +30,7 @@
 
 :root {
   --chat-font-size: 15px;
+  color-scheme: dark;
 }
 
 body {
@@ -37,6 +38,13 @@ body {
   margin: 0;
   overflow: hidden;
   user-select: none;
+}
+
+/* Ensure native form controls inherit the theme's color scheme.
+   The ThemeProvider also sets color-scheme dynamically for light vs dark. */
+input,
+textarea {
+  color-scheme: inherit;
 }
 
 /* Chat font size from settings */
@@ -59,11 +67,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1a1b1e;
+  background: var(--color-bg-tertiary);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #232428;
+  background: var(--color-bg-active);
 }
 
 .scrollbar-none {

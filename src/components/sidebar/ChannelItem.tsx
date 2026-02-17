@@ -4,6 +4,8 @@ import { useAuthStore } from "@/stores/authStore";
 import { Avatar } from "@/components/common/Avatar";
 import type { ChannelType } from "@/stores/roomStore";
 
+const EMPTY_PARTICIPANTS: CallParticipant[] = [];
+
 interface ChannelItemProps {
   roomId: string;
   name: string;
@@ -63,15 +65,18 @@ export function ChannelItem({
   const hasUnread = unreadCount > 0;
   const isActiveVoice = channelType === "voice" && activeCallRoomId === roomId && connectionState === "connected";
 
-  // Get participants for this voice channel (from state events or active call)
-  const roomParticipants = useCallStore((s) =>
-    channelType === "voice" ? s.participantsByRoom.get(roomId) ?? [] : []
-  );
-  const activeCallParticipants = useCallStore((s) =>
+  // Get participants for this voice channel (from state events or active call).
+  // IMPORTANT: selectors must return stable references — a bare `[]` creates a
+  // new array on every render, which Zustand treats as "changed" (compared by ===),
+  // causing an infinite re-render loop.
+  const roomParticipantsMap = useCallStore((s) => s.participantsByRoom);
+  const participantsMap = useCallStore((s) => s.participants);
+  const roomParticipants =
+    channelType === "voice" ? roomParticipantsMap.get(roomId) ?? EMPTY_PARTICIPANTS : EMPTY_PARTICIPANTS;
+  const activeCallParticipants =
     channelType === "voice" && activeCallRoomId === roomId && connectionState === "connected"
-      ? Array.from(s.participants.values())
-      : []
-  );
+      ? Array.from(participantsMap.values())
+      : EMPTY_PARTICIPANTS;
 
   // Use active call participants if we're in this call, otherwise use state-event-based list
   const voiceParticipants: CallParticipant[] =

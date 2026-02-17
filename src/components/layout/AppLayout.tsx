@@ -30,8 +30,11 @@ class SectionGuard extends Component<
   render() {
     if (this.state.error) {
       return (
-        <div className="flex items-center justify-center p-4 text-xs text-text-muted">
-          {this.props.name} failed to load
+        <div className="flex flex-col items-center justify-center gap-1 p-4 text-xs text-text-muted">
+          <span>{this.props.name} failed to load</span>
+          <span className="max-w-[200px] break-all text-red">
+            {this.state.error.message}
+          </span>
         </div>
       );
     }

@@ -14,6 +14,7 @@ import { VoiceChannelView } from "@/components/voice/VoiceChannelView";
 export function ChatView() {
   const selectedRoomId = useRoomStore((s) => s.selectedRoomId);
   const rooms = useRoomStore((s) => s.rooms);
+  const activeThreadId = useMessageStore((s) => s.activeThreadId);
 
   const room = selectedRoomId ? rooms.get(selectedRoomId) : undefined;
   const isVoiceChannel = room?.channelType === "voice";
@@ -37,7 +38,6 @@ export function ChatView() {
     );
   }
 
-  // Voice channels get their own dedicated view
   if (isVoiceChannel) {
     return (
       <ErrorBoundary>
@@ -45,8 +45,6 @@ export function ChatView() {
       </ErrorBoundary>
     );
   }
-
-  const activeThreadId = useMessageStore((s) => s.activeThreadId);
 
   return (
     <ErrorBoundary>

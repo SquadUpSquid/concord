@@ -275,8 +275,23 @@ export const useCallStore = create<CallState>()((set, get) => ({
       // Try to get an existing group call first (created by another participant)
       let groupCall = client.getGroupCallForRoom(roomId);
 
-      // No existing call — try to create one; if we lack permissions, wait for
-      // the room state to sync in case another participant creates it
+      // If no existing group call, try to find one by checking room state for
+      // org.matrix.msc3401.call or io.element.video state events
+      if (!groupCall) {
+        const room = client.getRoom(roomId);
+        if (room) {
+          // Force the GroupCallEventHandler to re-scan this room
+          try {
+            client.groupCallEventHandler.waitUntilRoomReadyForGroupCalls(roomId);
+            await new Promise((r) => setTimeout(r, 500));
+            groupCall = client.getGroupCallForRoom(roomId);
+          } catch {
+            // Continue to create
+          }
+        }
+      }
+
+      // Still no call - create one
       if (!groupCall) {
         try {
           groupCall = await client.createGroupCall(
@@ -287,9 +302,12 @@ export const useCallStore = create<CallState>()((set, get) => ({
           );
         } catch (createErr) {
           console.warn("Could not create group call, checking for existing:", createErr);
-          // Wait a moment for room state sync then check again
-          await new Promise((r) => setTimeout(r, 2000));
-          groupCall = client.getGroupCallForRoom(roomId);
+          // Wait longer for room state sync, then check again with retries
+          for (let i = 0; i < 3; i++) {
+            await new Promise((r) => setTimeout(r, 2000));
+            groupCall = client.getGroupCallForRoom(roomId);
+            if (groupCall) break;
+          }
           if (!groupCall) {
             throw createErr;
           }

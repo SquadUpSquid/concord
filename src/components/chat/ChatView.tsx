@@ -13,10 +13,11 @@ import { VoiceChannelView } from "@/components/voice/VoiceChannelView";
 
 export function ChatView() {
   const selectedRoomId = useRoomStore((s) => s.selectedRoomId);
-  const rooms = useRoomStore((s) => s.rooms);
+  const room = useRoomStore((s) => selectedRoomId ? s.rooms.get(selectedRoomId) : undefined);
   const activeThreadId = useMessageStore((s) => s.activeThreadId);
 
-  const room = selectedRoomId ? rooms.get(selectedRoomId) : undefined;
+  const roomName = room?.name ?? "Unknown";
+  const roomTopic = room?.topic ?? null;
   const isVoiceChannel = room?.channelType === "voice";
 
   useEffect(() => {
@@ -51,8 +52,8 @@ export function ChatView() {
       <div className="flex flex-1 overflow-hidden">
         <div className="flex flex-1 flex-col bg-bg-primary">
           <ChatHeader
-            name={room?.name ?? "Unknown"}
-            topic={room?.topic ?? null}
+            name={roomName}
+            topic={roomTopic}
           />
           <MessageList roomId={selectedRoomId} />
           <TypingIndicator roomId={selectedRoomId} />

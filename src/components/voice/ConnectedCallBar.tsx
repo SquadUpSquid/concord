@@ -10,12 +10,11 @@ export function ConnectedCallBar() {
   const toggleDeafen = useCallStore((s) => s.toggleDeafen);
   const leaveCall = useCallStore((s) => s.leaveCall);
   const selectRoom = useRoomStore((s) => s.selectRoom);
-  const rooms = useRoomStore((s) => s.rooms);
+  const roomName = useRoomStore((s) =>
+    activeCallRoomId ? s.rooms.get(activeCallRoomId)?.name ?? "Voice Channel" : "Voice Channel"
+  );
 
   if (!activeCallRoomId || connectionState === "disconnected") return null;
-
-  const room = rooms.get(activeCallRoomId);
-  const roomName = room?.name ?? "Voice Channel";
 
   return (
     <div className="border-t border-bg-tertiary bg-bg-secondary">

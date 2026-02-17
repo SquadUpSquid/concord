@@ -8,7 +8,7 @@ import { MessageContent } from "./MessageContent";
 import { ReactionBar } from "./ReactionBar";
 import { EmojiPicker } from "./EmojiPicker";
 import { getMatrixClient } from "@/lib/matrix";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, memo } from "react";
 
 interface MessageItemProps {
   message: Message;
@@ -96,7 +96,7 @@ function ThreadBadge({ message }: { message: Message }) {
   );
 }
 
-export function MessageItem({ message, showHeader }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, showHeader }: MessageItemProps) {
   const [showQuickPicker, setShowQuickPicker] = useState(false);
   const [showFullPicker, setShowFullPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -417,4 +417,4 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
       </div>
     </div>
   );
-}
+});

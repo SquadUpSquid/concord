@@ -1,4 +1,4 @@
-# Concord
+# Concord -- WORK IN PROGRESS NO OFFICIAL RELEASE
 
 A Discord-like desktop client for [Matrix](https://matrix.org), built with React, TypeScript, and Tauri.
 

@@ -1,10 +1,11 @@
-import { MatrixClient, ClientEvent, RoomEvent, RoomMemberEvent, MatrixEvent, Room, Membership } from "matrix-js-sdk";
+import { MatrixClient, ClientEvent, RoomEvent, RoomMemberEvent, RoomStateEvent, MatrixEvent, Room, Membership } from "matrix-js-sdk";
 import { useRoomStore, RoomSummary, ChannelType, RoomMembership } from "@/stores/roomStore";
 import { requestNotificationPermission, sendMessageNotification, updateTitleWithUnread } from "@/lib/notifications";
 import { useMessageStore, Message } from "@/stores/messageStore";
 import { useMemberStore, Member } from "@/stores/memberStore";
 import { useTypingStore } from "@/stores/typingStore";
 import { usePresenceStore, PresenceStatus } from "@/stores/presenceStore";
+import { useCallStore, CallParticipant } from "@/stores/callStore";
 import { mxcToHttp } from "@/utils/matrixHelpers";
 
 function mapEventToMessage(event: MatrixEvent, client: MatrixClient): Message {
@@ -230,10 +231,17 @@ function updateReactionsForEvent(client: MatrixClient, roomId: string, eventId: 
 }
 
 export function registerEventHandlers(client: MatrixClient): void {
+  let hasInitiallySynced = false;
+
   client.on(ClientEvent.Sync, (state) => {
     if (state === "PREPARED" || state === "SYNCING") {
       useRoomStore.getState().setSyncState("PREPARED");
-      syncRoomList(client);
+
+      // Full room list rebuild only on initial sync
+      if (!hasInitiallySynced) {
+        hasInitiallySynced = true;
+        syncRoomList(client);
+      }
       updateTitleWithUnread();
     } else if (state === "ERROR") {
       useRoomStore.getState().setSyncState("ERROR");
@@ -305,6 +313,25 @@ export function registerEventHandlers(client: MatrixClient): void {
     useRoomStore.getState().updateRoom(room.roomId, { name: room.name });
   });
 
+  // New rooms appearing (join/invite from another client)
+  client.on(ClientEvent.Room, (room: Room) => {
+    const summary = buildRoomSummary(room, client);
+    const rooms = new Map(useRoomStore.getState().rooms);
+    rooms.set(room.roomId, summary);
+    // Resolve space parent if applicable
+    for (const existingRoom of client.getRooms()) {
+      if (existingRoom.isSpaceRoom()) {
+        const childEvents = existingRoom.currentState.getStateEvents("m.space.child");
+        for (const ev of childEvents) {
+          if (ev.getStateKey() === room.roomId) {
+            summary.parentSpaceId = existingRoom.roomId;
+          }
+        }
+      }
+    }
+    useRoomStore.getState().setRooms(rooms);
+  });
+
   // Handle membership changes (new invites, joins, leaves)
   client.on(RoomEvent.MyMembership, (room, membership: Membership) => {
     if (membership === "invite" || membership === "join") {
@@ -342,6 +369,86 @@ export function registerEventHandlers(client: MatrixClient): void {
       statusMsg: content.status_msg ?? null,
     });
   });
+
+  // Track room state changes (topics, voice participants)
+  client.on(RoomStateEvent.Events, (event) => {
+    const roomId = event.getRoomId();
+    if (!roomId) return;
+
+    // Topic changes
+    if (event.getType() === "m.room.topic") {
+      const topic = event.getContent()?.topic ?? null;
+      useRoomStore.getState().updateRoom(roomId, { topic });
+    }
+
+    // Voice channel participant tracking via m.call.member state events
+    if (event.getType() === "org.matrix.msc3401.call.member" ||
+        event.getType() === "m.call.member") {
+      scanVoiceParticipants(client, roomId);
+    }
+  });
+
+  // Initial scan of all rooms for voice participants after sync
+  client.once(ClientEvent.Sync, () => {
+    const rooms = client.getRooms();
+    for (const room of rooms) {
+      scanVoiceParticipants(client, room.roomId);
+    }
+  });
+}
+
+/**
+ * Scan a room for active voice/call participants using m.call.member state events.
+ * Updates the callStore.participantsByRoom for display in the sidebar.
+ */
+function scanVoiceParticipants(client: MatrixClient, roomId: string): void {
+  const room = client.getRoom(roomId);
+  if (!room) return;
+
+  const homeserverUrl = client.getHomeserverUrl();
+  const participants: CallParticipant[] = [];
+
+  // Check for org.matrix.msc3401.call.member (MSC3401) state events
+  const memberEvents = [
+    ...room.currentState.getStateEvents("org.matrix.msc3401.call.member"),
+    ...room.currentState.getStateEvents("m.call.member"),
+  ];
+
+  for (const event of memberEvents) {
+    const userId = event.getStateKey();
+    if (!userId) continue;
+    const content = event.getContent();
+
+    // Check if the member is actively in a call
+    // The content has "m.calls" array - each entry has "m.call_id" and "m.devices"
+    const calls = content["m.calls"] ?? [];
+    let isActive = false;
+
+    for (const call of calls) {
+      const devices = call["m.devices"] ?? [];
+      if (devices.length > 0) {
+        isActive = true;
+        break;
+      }
+    }
+
+    if (!isActive) continue;
+
+    const member = room.getMember(userId);
+    if (!member) continue;
+
+    participants.push({
+      userId,
+      displayName: member.name ?? userId,
+      avatarUrl: mxcToHttp(member.getMxcAvatarUrl(), homeserverUrl),
+      isSpeaking: false,
+      isAudioMuted: false,
+      isVideoMuted: true,
+      feedId: null,
+    });
+  }
+
+  useCallStore.getState().setRoomParticipants(roomId, participants);
 }
 
 export function loadRoomMessages(client: MatrixClient, roomId: string): void {

@@ -1,6 +1,7 @@
 import { useCallStore } from "@/stores/callStore";
 import { useRoomStore } from "@/stores/roomStore";
 import { useAuthStore } from "@/stores/authStore";
+import { Avatar } from "@/components/common/Avatar";
 import { VoiceParticipant } from "./VoiceParticipant";
 import { VoiceControlBar } from "./VoiceControlBar";
 
@@ -17,6 +18,7 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
   const joinCall = useCallStore((s) => s.joinCall);
   const clearError = useCallStore((s) => s.clearError);
   const userId = useAuthStore((s) => s.userId);
+  const roomParticipants = useCallStore((s) => s.participantsByRoom.get(roomId) ?? []);
 
   const isInThisCall = activeCallRoomId === roomId && connectionState === "connected";
   const isConnecting = activeCallRoomId === roomId && connectionState === "connecting";
@@ -101,10 +103,35 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
               <h2 className="text-xl font-semibold text-text-primary">
                 {room?.name ?? "Voice Channel"}
               </h2>
-              <p className="mt-1 text-sm text-text-muted">
-                No one is in this voice channel yet.
-              </p>
+              {roomParticipants.length > 0 ? (
+                <p className="mt-1 text-sm text-text-muted">
+                  {roomParticipants.length} {roomParticipants.length === 1 ? "person" : "people"} currently in voice
+                </p>
+              ) : (
+                <p className="mt-1 text-sm text-text-muted">
+                  No one is in this voice channel yet.
+                </p>
+              )}
             </div>
+
+            {/* Show who's already in the channel */}
+            {roomParticipants.length > 0 && (
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                {roomParticipants.map((p) => (
+                  <div key={p.userId} className="flex flex-col items-center gap-1">
+                    <Avatar
+                      name={p.displayName}
+                      url={p.avatarUrl}
+                      size={48}
+                    />
+                    <span className="max-w-[80px] truncate text-xs text-text-secondary">
+                      {p.displayName}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <button
               onClick={() => joinCall(roomId)}
               className="rounded-md bg-green px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-green/80"

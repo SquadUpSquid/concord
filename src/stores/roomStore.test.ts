@@ -12,6 +12,9 @@ function makeRoom(overrides: Partial<RoomSummary> = {}): RoomSummary {
     parentSpaceId: null,
     lastMessageTs: Date.now(),
     channelType: "text",
+    membership: "join",
+    isDm: false,
+    inviteSender: null,
     ...overrides,
   };
 }

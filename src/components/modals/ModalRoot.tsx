@@ -3,6 +3,7 @@ import { CreateRoomModal } from "./CreateRoomModal";
 import { CreateSpaceModal } from "./CreateSpaceModal";
 import { RoomSettingsModal } from "./RoomSettingsModal";
 import { LeaveRoomModal } from "./LeaveRoomModal";
+import { CreateDmModal } from "./CreateDmModal";
 
 export function ModalRoot() {
   const activeModal = useUiStore((s) => s.activeModal);
@@ -16,6 +17,8 @@ export function ModalRoot() {
       return <RoomSettingsModal />;
     case "leaveRoom":
       return <LeaveRoomModal />;
+    case "createDm":
+      return <CreateDmModal />;
     default:
       return null;
   }

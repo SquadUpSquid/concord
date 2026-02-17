@@ -1,5 +1,5 @@
-import { MatrixClient, ClientEvent, RoomEvent, RoomMemberEvent, MatrixEvent, Room } from "matrix-js-sdk";
-import { useRoomStore, RoomSummary, ChannelType } from "@/stores/roomStore";
+import { MatrixClient, ClientEvent, RoomEvent, RoomMemberEvent, MatrixEvent, Room, Membership } from "matrix-js-sdk";
+import { useRoomStore, RoomSummary, ChannelType, RoomMembership } from "@/stores/roomStore";
 import { useMessageStore, Message } from "@/stores/messageStore";
 import { useMemberStore, Member } from "@/stores/memberStore";
 import { useTypingStore } from "@/stores/typingStore";
@@ -83,13 +83,31 @@ function mapEventToMessage(event: MatrixEvent, client: MatrixClient): Message {
 function buildRoomSummary(room: Room, client: MatrixClient): RoomSummary {
   const lastEvent = room.timeline[room.timeline.length - 1];
   const isSpace = room.isSpaceRoom();
+  const myUserId = client.getUserId() ?? "";
 
   // Detect channel type from m.room.create type field (Element standard)
-  // io.element.video = Element video room, org.matrix.msc3417.call = MSC3417 call room
   const channelType: ChannelType =
     (room as any).isElementVideoRoom?.() || (room as any).isCallRoom?.()
       ? "voice"
       : "text";
+
+  // Determine membership
+  const myMember = room.getMember(myUserId);
+  const membership: RoomMembership =
+    myMember?.membership === "invite" ? "invite" :
+    myMember?.membership === "leave" ? "leave" : "join";
+
+  // Detect DMs — rooms with exactly 2 joined/invited members and is_direct flag
+  const isDm = !!room.getDMInviter() ||
+    (room.getJoinedMemberCount() + room.getInvitedMemberCount() <= 2 &&
+     !isSpace &&
+     room.currentState.getStateEvents("m.room.create", "")?.getContent()?.type == null);
+
+  // Find who invited us (for invite UI)
+  let inviteSender: string | null = null;
+  if (membership === "invite") {
+    inviteSender = room.getDMInviter() ?? myMember?.events?.member?.getSender() ?? null;
+  }
 
   return {
     roomId: room.roomId,
@@ -104,6 +122,9 @@ function buildRoomSummary(room: Room, client: MatrixClient): RoomSummary {
     parentSpaceId: null,
     lastMessageTs: lastEvent?.getTs() ?? 0,
     channelType,
+    membership,
+    isDm,
+    inviteSender,
   };
 }
 
@@ -239,6 +260,18 @@ export function registerEventHandlers(client: MatrixClient): void {
 
   client.on(RoomEvent.Name, (room) => {
     useRoomStore.getState().updateRoom(room.roomId, { name: room.name });
+  });
+
+  // Handle membership changes (new invites, joins, leaves)
+  client.on(RoomEvent.MyMembership, (room, membership: Membership) => {
+    if (membership === "invite" || membership === "join") {
+      const summary = buildRoomSummary(room, client);
+      const rooms = new Map(useRoomStore.getState().rooms);
+      rooms.set(room.roomId, summary);
+      useRoomStore.getState().setRooms(rooms);
+    } else if (membership === "leave") {
+      useRoomStore.getState().removeRoom(room.roomId);
+    }
   });
 
   // Typing indicators

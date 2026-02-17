@@ -1,10 +1,12 @@
-import { useCallStore } from "@/stores/callStore";
+import { useCallStore, CallParticipant } from "@/stores/callStore";
 import { useRoomStore } from "@/stores/roomStore";
 import { useAuthStore } from "@/stores/authStore";
 import { Avatar } from "@/components/common/Avatar";
 import { VoiceParticipant } from "./VoiceParticipant";
 import { VoiceControlBar } from "./VoiceControlBar";
 import { ScreenshareFeedView } from "./ScreenshareFeedView";
+
+const EMPTY_PARTICIPANTS: CallParticipant[] = [];
 
 interface VoiceChannelViewProps {
   roomId: string;
@@ -19,7 +21,8 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
   const joinCall = useCallStore((s) => s.joinCall);
   const clearError = useCallStore((s) => s.clearError);
   const userId = useAuthStore((s) => s.userId);
-  const roomParticipants = useCallStore((s) => s.participantsByRoom.get(roomId) ?? []);
+  const roomParticipantsMap = useCallStore((s) => s.participantsByRoom);
+  const roomParticipants = roomParticipantsMap.get(roomId) ?? EMPTY_PARTICIPANTS;
   const screenshareFeeds = useCallStore((s) => s.screenshareFeeds);
 
   const isInThisCall = activeCallRoomId === roomId && connectionState === "connected";

@@ -208,41 +208,26 @@ const initialState = {
   participantsByRoom: new Map<string, CallParticipant[]>(),
 };
 
-async function checkMediaPermissions(): Promise<void> {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error(
-      "Media devices not available. Your browser or environment does not support microphone access."
-    );
+function toUserFriendlyError(err: unknown): string {
+  if (err instanceof DOMException) {
+    if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+      return "Microphone permission denied. Please allow microphone access in your system settings and try again.";
+    }
+    if (err.name === "NotFoundError") {
+      return "No microphone found. Please connect a microphone and try again.";
+    }
+    if (err.name === "NotReadableError" || err.name === "AbortError") {
+      return "Could not access microphone. It may be in use by another application.";
+    }
   }
 
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    // Release the stream immediately -- we just needed to check permissions
-    for (const track of stream.getTracks()) {
-      track.stop();
-    }
-  } catch (err: unknown) {
-    if (err instanceof DOMException) {
-      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-        throw new Error(
-          "Microphone permission denied. Please allow microphone access and try again."
-        );
-      }
-      if (err.name === "NotFoundError") {
-        throw new Error(
-          "No microphone found. Please connect a microphone and try again."
-        );
-      }
-      if (err.name === "NotReadableError" || err.name === "AbortError") {
-        throw new Error(
-          "Could not access microphone. It may be in use by another application."
-        );
-      }
-    }
-    throw new Error(
-      `Microphone access failed: ${err instanceof Error ? err.message : String(err)}`
-    );
+  const msg = err instanceof Error ? err.message : String(err);
+
+  if (msg.includes("power level") || msg.includes("not permitted") || msg.includes("403")) {
+    return "You don't have permission to start a call in this room. Ask an admin to grant you permission, or wait for someone else to start the call.";
   }
+
+  return msg || "Failed to join voice channel. Please try again.";
 }
 
 export const useCallStore = create<CallState>()((set, get) => ({
@@ -263,30 +248,40 @@ export const useCallStore = create<CallState>()((set, get) => ({
     set({ connectionState: "connecting", activeCallRoomId: roomId, error: null });
 
     try {
-      // Check microphone permissions before attempting to join
-      await checkMediaPermissions();
-
       // Wait for room state to be ready
       if (!client.groupCallEventHandler) {
         throw new Error("Group call support not initialized. Please restart the app.");
       }
       await client.groupCallEventHandler.waitUntilRoomReadyForGroupCalls(roomId);
 
-      // Get existing group call or create one
+      // Try to get an existing group call first (created by another participant)
       let groupCall = client.getGroupCallForRoom(roomId);
+
+      // No existing call — try to create one; if we lack permissions, wait for
+      // the room state to sync in case another participant creates it
       if (!groupCall) {
-        groupCall = await client.createGroupCall(
-          roomId,
-          GroupCallType.Voice,
-          false, // isPtt
-          GroupCallIntent.Room,
-        );
+        try {
+          groupCall = await client.createGroupCall(
+            roomId,
+            GroupCallType.Video,
+            false, // isPtt
+            GroupCallIntent.Room,
+          );
+        } catch (createErr) {
+          console.warn("Could not create group call, checking for existing:", createErr);
+          // Wait a moment for room state sync then check again
+          await new Promise((r) => setTimeout(r, 2000));
+          groupCall = client.getGroupCallForRoom(roomId);
+          if (!groupCall) {
+            throw createErr;
+          }
+        }
       }
 
       activeGroupCall = groupCall;
       attachGroupCallListeners(groupCall, set, get);
 
-      // Enter the call (requests mic, starts WebRTC)
+      // Enter the call (requests mic, starts WebRTC connections)
       await groupCall.enter();
 
       // Voice-first: mute video by default
@@ -299,11 +294,10 @@ export const useCallStore = create<CallState>()((set, get) => ({
         detachGroupCallListeners(activeGroupCall);
         activeGroupCall = null;
       }
-      const errorMsg = err instanceof Error ? err.message : "Failed to join voice channel. Please try again.";
       set({
         ...initialState,
         activeCallRoomId: roomId,
-        error: errorMsg,
+        error: toUserFriendlyError(err),
       });
     }
   },

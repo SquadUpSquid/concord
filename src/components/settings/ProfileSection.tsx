@@ -20,7 +20,7 @@ export function ProfileSection() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const avatarHttpUrl = mxcToHttp(avatarMxc, homeserverUrl);
+  const avatarHttpUrl = mxcToHttp(avatarMxc, homeserverUrl, 160, 160);
   const originalName = user?.displayName ?? userId ?? "";
   const originalAvatar = user?.avatarUrl ?? null;
   const hasChanges = displayName.trim() !== originalName || avatarMxc !== originalAvatar;

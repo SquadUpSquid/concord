@@ -107,8 +107,8 @@ export function ChannelSidebar() {
   const client = getMatrixClient();
   const user = client?.getUser(userId ?? "");
   const displayName = user?.displayName ?? userId ?? "User";
-  const avatarUrl = user
-    ? mxcToHttp(user.avatarUrl ?? null, client!.getHomeserverUrl())
+  const avatarUrl = user && client
+    ? mxcToHttp(user.avatarUrl ?? null, client.getHomeserverUrl())
     : null;
 
   return (

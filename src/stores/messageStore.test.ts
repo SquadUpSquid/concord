@@ -14,8 +14,12 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
     type: "m.text",
     isEncrypted: false,
     isDecryptionFailure: false,
+    isEdited: false,
+    isRedacted: false,
     replyToEvent: null,
     reactions: [],
+    url: null,
+    info: null,
     ...overrides,
   };
 }
@@ -26,6 +30,7 @@ describe("messageStore", () => {
       messagesByRoom: new Map(),
       isLoadingHistory: false,
       replyingTo: null,
+      editingMessage: null,
     });
   });
 

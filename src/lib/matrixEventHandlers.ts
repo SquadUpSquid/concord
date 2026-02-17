@@ -11,6 +11,12 @@ function mapEventToMessage(event: MatrixEvent, client: MatrixClient): Message {
   const homeserverUrl = client.getHomeserverUrl();
   const content = event.getContent();
 
+  // Check if message was edited — use the replacement content if available
+  const replacingEvent = event.replacingEvent();
+  const effectiveContent = replacingEvent ? replacingEvent.getContent()["m.new_content"] ?? content : content;
+  const isEdited = !!replacingEvent || !!content["m.relates_to"]?.rel_type?.includes("replace");
+  const isRedacted = event.isRedacted();
+
   // Extract reply-to info from m.relates_to
   let replyToEvent: Message["replyToEvent"] = null;
   try {
@@ -58,15 +64,19 @@ function mapEventToMessage(event: MatrixEvent, client: MatrixClient): Message {
     senderId: event.getSender() ?? "",
     senderName: sender?.name ?? event.getSender() ?? "Unknown",
     senderAvatar: sender ? mxcToHttp(sender.getMxcAvatarUrl(), homeserverUrl) : null,
-    body: content.body ?? "",
-    formattedBody: content.formatted_body ?? null,
+    body: isRedacted ? "" : (effectiveContent.body ?? ""),
+    formattedBody: isRedacted ? null : (effectiveContent.formatted_body ?? null),
     timestamp: event.getTs(),
-    type: content.msgtype ?? event.getType(),
+    type: effectiveContent.msgtype ?? event.getType(),
     isEncrypted: event.isEncrypted(),
     isDecryptionFailure: event.isDecryptionFailure()
       || (content.body ?? "").includes("Unable to decrypt"),
+    isEdited,
+    isRedacted,
     replyToEvent,
     reactions,
+    url: effectiveContent.url ?? null,
+    info: effectiveContent.info ?? null,
   };
 }
 
@@ -182,8 +192,21 @@ export function registerEventHandlers(client: MatrixClient): void {
     if (toStartOfTimeline || !room) return;
 
     if (event.getType() === "m.room.message" || event.getType() === "m.room.encrypted") {
-      const message = mapEventToMessage(event, client);
-      useMessageStore.getState().addMessage(room.roomId, message);
+      // Check if this is an edit (m.replace relation)
+      const relatesTo = event.getContent()["m.relates_to"];
+      if (relatesTo?.rel_type === "m.replace" && relatesTo?.event_id) {
+        const newContent = event.getContent()["m.new_content"];
+        if (newContent) {
+          useMessageStore.getState().updateMessage(room.roomId, relatesTo.event_id, {
+            body: newContent.body ?? "",
+            formattedBody: newContent.formatted_body ?? null,
+            isEdited: true,
+          });
+        }
+      } else {
+        const message = mapEventToMessage(event, client);
+        useMessageStore.getState().addMessage(room.roomId, message);
+      }
     }
 
     // Handle reaction events
@@ -199,6 +222,19 @@ export function registerEventHandlers(client: MatrixClient): void {
       lastMessageTs: event.getTs(),
       unreadCount: room.getUnreadNotificationCount() ?? 0,
     });
+  });
+
+  // Handle redactions (message deletions)
+  client.on(RoomEvent.Redaction, (event, room) => {
+    if (!room) return;
+    const redactedId = event.event.redacts;
+    if (redactedId) {
+      useMessageStore.getState().updateMessage(room.roomId, redactedId, {
+        body: "",
+        formattedBody: null,
+        isRedacted: true,
+      });
+    }
   });
 
   client.on(RoomEvent.Name, (room) => {

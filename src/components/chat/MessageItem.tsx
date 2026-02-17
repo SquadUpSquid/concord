@@ -1,4 +1,5 @@
 import { Message, useMessageStore } from "@/stores/messageStore";
+import { useAuthStore } from "@/stores/authStore";
 import { formatTimestamp } from "@/utils/formatters";
 import { Avatar } from "@/components/common/Avatar";
 import { MessageContent } from "./MessageContent";
@@ -26,6 +27,17 @@ function EncryptedPlaceholder() {
   );
 }
 
+function RedactedPlaceholder() {
+  return (
+    <div className="flex items-center gap-1.5 text-sm italic text-text-muted">
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+      </svg>
+      <span>This message was deleted.</span>
+    </div>
+  );
+}
+
 function ReplyContext({ reply }: { reply: NonNullable<Message["replyToEvent"]> }) {
   return (
     <div className="mb-1 flex items-center gap-1.5 text-xs text-text-muted">
@@ -38,11 +50,34 @@ function ReplyContext({ reply }: { reply: NonNullable<Message["replyToEvent"]> }
   );
 }
 
+function MessageBody({ message }: { message: Message }) {
+  if (message.isRedacted) return <RedactedPlaceholder />;
+  if (message.isDecryptionFailure) return <EncryptedPlaceholder />;
+  return (
+    <div className="flex items-baseline gap-1">
+      <MessageContent
+        body={message.body}
+        formattedBody={message.formattedBody}
+        msgtype={message.type}
+        url={message.url ?? undefined}
+        info={message.info ?? undefined}
+      />
+      {message.isEdited && (
+        <span className="text-[10px] text-text-muted">(edited)</span>
+      )}
+    </div>
+  );
+}
+
 export function MessageItem({ message, showHeader }: MessageItemProps) {
   const [showQuickPicker, setShowQuickPicker] = useState(false);
   const [showFullPicker, setShowFullPicker] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
   const setReplyingTo = useMessageStore((s) => s.setReplyingTo);
+  const setEditingMessage = useMessageStore((s) => s.setEditingMessage);
+  const myUserId = useAuthStore((s) => s.userId);
+  const isOwnMessage = message.senderId === myUserId;
 
   // Close full picker on click outside
   useEffect(() => {
@@ -59,6 +94,21 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
 
   const handleReply = () => {
     setReplyingTo(message);
+  };
+
+  const handleEdit = () => {
+    setEditingMessage(message);
+  };
+
+  const handleDelete = async () => {
+    const client = getMatrixClient();
+    if (!client) return;
+    try {
+      await client.redactEvent(message.roomId, message.eventId);
+      setShowDeleteConfirm(false);
+    } catch (err) {
+      console.error("Failed to delete message:", err);
+    }
   };
 
   const sendReaction = async (emoji: string) => {
@@ -79,7 +129,7 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
     }
   };
 
-  const actionButtons = (
+  const actionButtons = !message.isRedacted && (
     <div className="absolute -top-3 right-4 hidden gap-0.5 rounded bg-bg-floating shadow group-hover:flex">
       <button
         onClick={handleReply}
@@ -90,6 +140,29 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
           <path d="M9 17l-5-5 5-5M4 12h16" />
         </svg>
       </button>
+      {isOwnMessage && !message.isRedacted && (
+        <button
+          onClick={handleEdit}
+          className="rounded p-1.5 text-text-muted hover:bg-bg-hover hover:text-text-primary"
+          title="Edit"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+        </button>
+      )}
+      {isOwnMessage && !message.isRedacted && (
+        <button
+          onClick={() => setShowDeleteConfirm(true)}
+          className="rounded p-1.5 text-text-muted hover:bg-bg-hover hover:text-red"
+          title="Delete"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+          </svg>
+        </button>
+      )}
       <div className="relative" ref={pickerRef}>
         <button
           onClick={() => {
@@ -145,10 +218,31 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
     </div>
   );
 
+  const deleteConfirmPopover = showDeleteConfirm && (
+    <div className="absolute -top-16 right-4 z-20 rounded-lg bg-bg-floating p-3 shadow-lg">
+      <p className="mb-2 text-xs text-text-secondary">Delete this message?</p>
+      <div className="flex gap-2">
+        <button
+          onClick={() => setShowDeleteConfirm(false)}
+          className="rounded px-2 py-1 text-xs text-text-muted hover:bg-bg-hover"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleDelete}
+          className="rounded bg-red px-2 py-1 text-xs text-white hover:bg-red/80"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  );
+
   if (showHeader) {
     return (
       <div className="group relative mt-4 flex gap-3 py-0.5 hover:bg-bg-hover/50">
         {actionButtons}
+        {deleteConfirmPopover}
         <Avatar
           name={message.senderName}
           url={message.senderAvatar}
@@ -164,10 +258,7 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
               {formatTimestamp(message.timestamp)}
             </span>
           </div>
-          {message.isDecryptionFailure
-            ? <EncryptedPlaceholder />
-            : <MessageContent body={message.body} formattedBody={message.formattedBody} />
-          }
+          <MessageBody message={message} />
           <ReactionBar reactions={message.reactions} eventId={message.eventId} roomId={message.roomId} />
         </div>
       </div>
@@ -177,6 +268,7 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
   return (
     <div className="group relative flex gap-3 py-0.5 hover:bg-bg-hover/50">
       {actionButtons}
+      {deleteConfirmPopover}
       <div className="w-10 flex-shrink-0">
         <span className="hidden text-xs text-text-muted group-hover:inline">
           {new Date(message.timestamp).toLocaleTimeString([], {
@@ -187,7 +279,7 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
       </div>
       <div className="flex-1">
         {message.replyToEvent && <ReplyContext reply={message.replyToEvent} />}
-        <MessageContent body={message.body} formattedBody={message.formattedBody} />
+        <MessageBody message={message} />
         <ReactionBar reactions={message.reactions} eventId={message.eventId} roomId={message.roomId} />
       </div>
     </div>

@@ -2,7 +2,7 @@
 name = "concord"
 version = "0.1.0"
 description = "A Discord-like Matrix client"
-authors = ["you"]
+authors = ["William Harrell"]
 edition = "2021"
 
 [lib]

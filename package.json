@@ -3,6 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "description": "A Discord-like desktop client for Matrix",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SquadUpSquid/concord.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

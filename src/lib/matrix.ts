@@ -1,4 +1,5 @@
 import * as sdk from "matrix-js-sdk";
+import { GroupCallEventHandler } from "matrix-js-sdk/lib/webrtc/groupCallEventHandler";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 
 let matrixClient: sdk.MatrixClient | null = null;
@@ -51,6 +52,11 @@ async function createClient(
 
   await store.startup();
   await matrixClient.initRustCrypto();
+
+  // Enable group call support before starting the client
+  matrixClient.groupCallEventHandler = new GroupCallEventHandler(matrixClient);
+  matrixClient.groupCallEventHandler.start();
+
   await matrixClient.startClient({ initialSyncLimit: 20 });
 
   return matrixClient;

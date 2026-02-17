@@ -5,6 +5,7 @@ import { ChannelItem } from "./ChannelItem";
 import { useAuthStore } from "@/stores/authStore";
 import { usePresenceStore } from "@/stores/presenceStore";
 import { Avatar } from "@/components/common/Avatar";
+import { ConnectedCallBar } from "@/components/voice/ConnectedCallBar";
 import { destroyMatrixClient, getMatrixClient } from "@/lib/matrix";
 import { mxcToHttp } from "@/utils/matrixHelpers";
 
@@ -177,6 +178,9 @@ export function ChannelSidebar() {
           </div>
         )}
       </div>
+
+      {/* Voice connection bar */}
+      <ConnectedCallBar />
 
       {/* User section */}
       <div className="flex items-center gap-2 border-t border-bg-tertiary bg-bg-floating/50 px-2 py-2">

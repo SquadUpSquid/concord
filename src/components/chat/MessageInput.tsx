@@ -1,7 +1,8 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { getMatrixClient } from "@/lib/matrix";
 import { useMessageStore } from "@/stores/messageStore";
 import { EmojiPicker } from "./EmojiPicker";
+import { searchEmojis, type EmojiEntry } from "@/lib/emojiData";
 
 interface MessageInputProps {
   roomId: string;
@@ -16,10 +17,34 @@ export function MessageInput({ roomId }: MessageInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emojiRef = useRef<HTMLDivElement>(null);
+  const [emojiAutocomplete, setEmojiAutocomplete] = useState<EmojiEntry[]>([]);
+  const [emojiSelectedIdx, setEmojiSelectedIdx] = useState(0);
   const replyingTo = useMessageStore((s) => s.replyingTo);
   const setReplyingTo = useMessageStore((s) => s.setReplyingTo);
   const editingMessage = useMessageStore((s) => s.editingMessage);
   const setEditingMessage = useMessageStore((s) => s.setEditingMessage);
+
+  // Emoji autocomplete: detect ":text" at end of input
+  const emojiQuery = useMemo(() => {
+    const match = message.match(/:([a-z0-9_]{2,})$/i);
+    return match ? match[1] : null;
+  }, [message]);
+
+  useEffect(() => {
+    if (emojiQuery) {
+      const results = searchEmojis(emojiQuery);
+      setEmojiAutocomplete(results);
+      setEmojiSelectedIdx(0);
+    } else {
+      setEmojiAutocomplete([]);
+    }
+  }, [emojiQuery]);
+
+  const applyEmoji = (emoji: string) => {
+    setMessage((prev) => prev.replace(/:([a-z0-9_]{2,})$/i, emoji));
+    setEmojiAutocomplete([]);
+    inputRef.current?.focus();
+  };
 
   // Populate input when entering edit mode
   useEffect(() => {
@@ -175,6 +200,29 @@ export function MessageInput({ roomId }: MessageInputProps) {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Emoji autocomplete navigation
+    if (emojiAutocomplete.length > 0) {
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setEmojiSelectedIdx((i) => (i > 0 ? i - 1 : emojiAutocomplete.length - 1));
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setEmojiSelectedIdx((i) => (i < emojiAutocomplete.length - 1 ? i + 1 : 0));
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        applyEmoji(emojiAutocomplete[emojiSelectedIdx].emoji);
+        return;
+      }
+      if (e.key === "Escape") {
+        setEmojiAutocomplete([]);
+        return;
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -254,7 +302,25 @@ export function MessageInput({ roomId }: MessageInputProps) {
         </div>
       )}
 
-      <div className={`flex items-center bg-bg-input px-4 ${hasContext ? "rounded-b-lg" : "rounded-lg"}`}>
+      {/* Emoji autocomplete dropdown */}
+      {emojiAutocomplete.length > 0 && (
+        <div className={`mb-1 overflow-hidden bg-bg-floating shadow-lg ${hasContext ? "" : "rounded-t-lg"}`}>
+          {emojiAutocomplete.map((entry, i) => (
+            <button
+              key={entry.name}
+              onClick={() => applyEmoji(entry.emoji)}
+              className={`flex w-full items-center gap-3 px-4 py-1.5 text-left text-sm ${
+                i === emojiSelectedIdx ? "bg-accent/20 text-text-primary" : "text-text-secondary hover:bg-bg-hover"
+              }`}
+            >
+              <span className="text-lg">{entry.emoji}</span>
+              <span>:{entry.name}:</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className={`flex items-center bg-bg-input px-4 ${hasContext ? "rounded-b-lg" : emojiAutocomplete.length > 0 ? "rounded-b-lg" : "rounded-lg"}`}>
         <button
           onClick={() => fileInputRef.current?.click()}
           className="mr-2 rounded p-1 text-text-muted hover:text-text-primary"

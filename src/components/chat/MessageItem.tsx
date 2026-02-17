@@ -2,6 +2,7 @@ import { Message, useMessageStore } from "@/stores/messageStore";
 import { useAuthStore } from "@/stores/authStore";
 import { formatTimestamp } from "@/utils/formatters";
 import { Avatar } from "@/components/common/Avatar";
+import { UserPopover } from "@/components/common/UserPopover";
 import { MessageContent } from "./MessageContent";
 import { ReactionBar } from "./ReactionBar";
 import { EmojiPicker } from "./EmojiPicker";
@@ -73,6 +74,7 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
   const [showQuickPicker, setShowQuickPicker] = useState(false);
   const [showFullPicker, setShowFullPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [popoverAnchor, setPopoverAnchor] = useState<HTMLElement | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const setReplyingTo = useMessageStore((s) => s.setReplyingTo);
   const setEditingMessage = useMessageStore((s) => s.setEditingMessage);
@@ -129,6 +131,24 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
     }
   };
 
+  const handlePin = async () => {
+    const client = getMatrixClient();
+    if (!client) return;
+    try {
+      const room = client.getRoom(message.roomId);
+      if (!room) return;
+      const pinned: string[] =
+        room.currentState.getStateEvents("m.room.pinned_events", "")?.getContent()?.pinned ?? [];
+      const isPinned = pinned.includes(message.eventId);
+      const newPinned = isPinned
+        ? pinned.filter((id) => id !== message.eventId)
+        : [...pinned, message.eventId];
+      await client.sendStateEvent(message.roomId, "m.room.pinned_events" as any, { pinned: newPinned }, "");
+    } catch (err) {
+      console.error("Failed to pin/unpin message:", err);
+    }
+  };
+
   const actionButtons = !message.isRedacted && (
     <div className="absolute -top-3 right-4 hidden gap-0.5 rounded bg-bg-floating shadow group-hover:flex">
       <button
@@ -138,6 +158,15 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
       >
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M9 17l-5-5 5-5M4 12h16" />
+        </svg>
+      </button>
+      <button
+        onClick={handlePin}
+        className="rounded p-1.5 text-text-muted hover:bg-bg-hover hover:text-yellow"
+        title="Pin/Unpin"
+      >
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M12 2l3 7h7l-5.5 4.5 2 7L12 16l-6.5 4.5 2-7L2 9h7l3-7z" />
         </svg>
       </button>
       {isOwnMessage && !message.isRedacted && (
@@ -243,17 +272,25 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
       <div className="group relative mt-4 flex gap-3 py-0.5 hover:bg-bg-hover/50">
         {actionButtons}
         {deleteConfirmPopover}
-        <Avatar
-          name={message.senderName}
-          url={message.senderAvatar}
-          size={40}
-        />
+        <button
+          className="flex-shrink-0 cursor-pointer"
+          onClick={(e) => setPopoverAnchor(e.currentTarget)}
+        >
+          <Avatar
+            name={message.senderName}
+            url={message.senderAvatar}
+            size={40}
+          />
+        </button>
         <div className="flex-1 overflow-hidden">
           {message.replyToEvent && <ReplyContext reply={message.replyToEvent} />}
           <div className="flex items-baseline gap-2">
-            <span className="font-medium text-text-primary">
+            <button
+              className="font-medium text-text-primary hover:underline"
+              onClick={(e) => setPopoverAnchor(e.currentTarget)}
+            >
               {message.senderName}
-            </span>
+            </button>
             <span className="text-xs text-text-muted">
               {formatTimestamp(message.timestamp)}
             </span>
@@ -261,6 +298,15 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
           <MessageBody message={message} />
           <ReactionBar reactions={message.reactions} eventId={message.eventId} roomId={message.roomId} />
         </div>
+        {popoverAnchor && (
+          <UserPopover
+            userId={message.senderId}
+            displayName={message.senderName}
+            avatarUrl={message.senderAvatar}
+            anchorEl={popoverAnchor}
+            onClose={() => setPopoverAnchor(null)}
+          />
+        )}
       </div>
     );
   }

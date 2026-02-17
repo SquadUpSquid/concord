@@ -2,7 +2,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { getMatrixClient } from "@/lib/matrix";
-import { mxcToHttp } from "@/utils/matrixHelpers";
+import { mxcToHttp, mxcToFullUrl } from "@/utils/matrixHelpers";
 
 interface MessageContentProps {
   body: string;
@@ -18,12 +18,13 @@ export function MessageContent({ body, formattedBody: _formattedBody, msgtype, u
 
   // Image message
   if (msgtype === "m.image" && url) {
-    const httpUrl = mxcToHttp(url, homeserverUrl);
+    const thumbUrl = mxcToHttp(url, homeserverUrl, 800, 600);
+    const fullUrl = mxcToFullUrl(url, homeserverUrl);
     return (
       <div className="message-content my-1">
-        <a href={httpUrl ?? undefined} target="_blank" rel="noopener noreferrer">
+        <a href={fullUrl ?? undefined} target="_blank" rel="noopener noreferrer">
           <img
-            src={httpUrl ?? undefined}
+            src={thumbUrl ?? undefined}
             alt={body}
             className="max-h-[300px] max-w-[400px] rounded-lg object-contain"
             loading="lazy"
@@ -38,11 +39,11 @@ export function MessageContent({ body, formattedBody: _formattedBody, msgtype, u
 
   // Video message
   if (msgtype === "m.video" && url) {
-    const httpUrl = mxcToHttp(url, homeserverUrl);
+    const fullUrl = mxcToFullUrl(url, homeserverUrl);
     return (
       <div className="message-content my-1">
         <video
-          src={httpUrl ?? undefined}
+          src={fullUrl ?? undefined}
           controls
           className="max-h-[300px] max-w-[400px] rounded-lg"
           preload="metadata"
@@ -53,24 +54,25 @@ export function MessageContent({ body, formattedBody: _formattedBody, msgtype, u
 
   // Audio message
   if (msgtype === "m.audio" && url) {
-    const httpUrl = mxcToHttp(url, homeserverUrl);
+    const fullUrl = mxcToFullUrl(url, homeserverUrl);
     return (
       <div className="message-content my-1">
-        <audio src={httpUrl ?? undefined} controls preload="metadata" className="max-w-[400px]" />
+        <audio src={fullUrl ?? undefined} controls preload="metadata" className="max-w-[400px]" />
       </div>
     );
   }
 
   // File message
   if (msgtype === "m.file" && url) {
-    const httpUrl = mxcToHttp(url, homeserverUrl);
+    const fullUrl = mxcToFullUrl(url, homeserverUrl);
     const sizeStr = info?.size ? formatFileSize(info.size) : "";
     return (
       <div className="message-content my-1">
         <a
-          href={httpUrl ?? undefined}
+          href={fullUrl ?? undefined}
           target="_blank"
           rel="noopener noreferrer"
+          download
           className="flex items-center gap-2 rounded-lg bg-bg-secondary p-3 transition-colors hover:bg-bg-active"
         >
           <svg className="h-8 w-8 flex-shrink-0 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">

@@ -1,9 +1,24 @@
+import { useState } from "react";
+
 interface ServerIconProps {
   name: string;
   avatarUrl: string | null;
   isSelected: boolean;
   unreadCount: number;
   onClick: () => void;
+}
+
+const COLORS = [
+  "#5865f2", "#57f287", "#fee75c", "#eb459e",
+  "#ed4245", "#f47b67", "#45ddc0", "#5dadec",
+];
+
+function getColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return COLORS[Math.abs(hash) % COLORS.length];
 }
 
 export function ServerIcon({
@@ -13,12 +28,16 @@ export function ServerIcon({
   unreadCount,
   onClick,
 }: ServerIconProps) {
+  const [imgError, setImgError] = useState(false);
+
   const initials = name
     .split(" ")
     .map((w) => w[0])
     .join("")
     .slice(0, 2)
     .toUpperCase();
+
+  const showImage = avatarUrl && !imgError;
 
   return (
     <div className="group relative">
@@ -29,6 +48,11 @@ export function ServerIcon({
         }`}
       />
 
+      {/* Tooltip */}
+      <div className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap rounded-md bg-bg-floating px-3 py-2 text-sm font-medium text-text-primary opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+        {name}
+      </div>
+
       <button
         onClick={onClick}
         className={`relative flex h-12 w-12 items-center justify-center overflow-hidden transition-all ${
@@ -38,10 +62,20 @@ export function ServerIcon({
         }`}
         title={name}
       >
-        {avatarUrl ? (
-          <img src={avatarUrl} alt={name} className="h-full w-full object-cover" />
+        {showImage ? (
+          <img
+            src={avatarUrl}
+            alt={name}
+            className="h-full w-full object-cover"
+            onError={() => setImgError(true)}
+          />
         ) : (
-          <span className="text-sm font-medium text-text-primary">{initials}</span>
+          <span
+            className="flex h-full w-full items-center justify-center text-sm font-medium text-white"
+            style={{ backgroundColor: isSelected ? undefined : getColor(name) }}
+          >
+            {initials}
+          </span>
         )}
       </button>
 

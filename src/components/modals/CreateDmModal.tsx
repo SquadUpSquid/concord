@@ -1,8 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Modal } from "@/components/common/Modal";
+import { Avatar } from "@/components/common/Avatar";
 import { useUiStore } from "@/stores/uiStore";
 import { useRoomStore } from "@/stores/roomStore";
 import { getMatrixClient } from "@/lib/matrix";
+import { mxcToHttp } from "@/utils/matrixHelpers";
 import { Preset } from "matrix-js-sdk";
 
 interface SearchResult {
@@ -35,11 +37,12 @@ export function CreateDmModal() {
 
     try {
       const response = await (client as any).searchUserDirectory({ term: term.trim(), limit: 10 });
+      const hsUrl = client.getHomeserverUrl();
       setResults(
         response.results.map((u: { user_id: string; display_name?: string; avatar_url?: string }) => ({
           userId: u.user_id,
           displayName: u.display_name ?? null,
-          avatarUrl: u.avatar_url ?? null,
+          avatarUrl: mxcToHttp(u.avatar_url, hsUrl),
         }))
       );
     } catch (err) {
@@ -163,9 +166,11 @@ export function CreateDmModal() {
               disabled={creating}
               className="flex w-full items-center gap-3 rounded-sm px-3 py-2 text-left transition-colors hover:bg-bg-hover disabled:opacity-50"
             >
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-white">
-                {(user.displayName ?? user.userId).charAt(0).toUpperCase()}
-              </div>
+              <Avatar
+                name={user.displayName ?? user.userId}
+                url={user.avatarUrl}
+                size={36}
+              />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-text-primary">
                   {user.displayName ?? user.userId}

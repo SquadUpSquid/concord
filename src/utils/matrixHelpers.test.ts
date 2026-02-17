@@ -7,13 +7,13 @@ describe("mxcToHttp", () => {
   it("converts a valid mxc URL to HTTP thumbnail URL", () => {
     const result = mxcToHttp("mxc://matrix.org/abcdef123", homeserver);
     expect(result).toBe(
-      "https://matrix.org/_matrix/media/v3/thumbnail/matrix.org/abcdef123?width=40&height=40&method=crop"
+      "https://matrix.org/_matrix/media/v3/thumbnail/matrix.org/abcdef123?width=96&height=96&method=crop"
     );
   });
 
   it("uses custom dimensions", () => {
-    const result = mxcToHttp("mxc://matrix.org/abcdef123", homeserver, 96, 96);
-    expect(result).toContain("width=96&height=96");
+    const result = mxcToHttp("mxc://matrix.org/abcdef123", homeserver, 200, 200);
+    expect(result).toContain("width=200&height=200");
   });
 
   it("returns null for null input", () => {

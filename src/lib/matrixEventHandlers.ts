@@ -168,30 +168,42 @@ function buildRoomSummary(room: Room, client: MatrixClient): RoomSummary {
 }
 
 function syncRoomList(client: MatrixClient): void {
-  const rooms = client.getRooms();
-  const roomMap = new Map<string, RoomSummary>();
+  try {
+    const rooms = client.getRooms();
+    const roomMap = new Map<string, RoomSummary>();
 
-  for (const room of rooms) {
-    roomMap.set(room.roomId, buildRoomSummary(room, client));
-  }
-
-  // Resolve space parents
-  for (const room of rooms) {
-    if (room.isSpaceRoom()) {
-      const childEvents = room.currentState.getStateEvents("m.space.child");
-      for (const ev of childEvents) {
-        const childId = ev.getStateKey();
-        if (childId) {
-          const child = roomMap.get(childId);
-          if (child && !child.parentSpaceId) {
-            child.parentSpaceId = room.roomId;
-          }
-        }
+    for (const room of rooms) {
+      try {
+        roomMap.set(room.roomId, buildRoomSummary(room, client));
+      } catch (err) {
+        console.warn("Failed to build summary for room", room.roomId, err);
       }
     }
-  }
 
-  useRoomStore.getState().setRooms(roomMap);
+    // Resolve space parents
+    for (const room of rooms) {
+      try {
+        if (room.isSpaceRoom()) {
+          const childEvents = room.currentState.getStateEvents("m.space.child");
+          for (const ev of childEvents) {
+            const childId = ev.getStateKey();
+            if (childId) {
+              const child = roomMap.get(childId);
+              if (child && !child.parentSpaceId) {
+                child.parentSpaceId = room.roomId;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to resolve space parents for room", room.roomId, err);
+      }
+    }
+
+    useRoomStore.getState().setRooms(roomMap);
+  } catch (err) {
+    console.error("syncRoomList failed:", err);
+  }
 }
 
 export function syncRoomMembers(client: MatrixClient, roomId: string): void {
@@ -332,32 +344,40 @@ export function registerEventHandlers(client: MatrixClient): void {
 
   // New rooms appearing (join/invite from another client)
   client.on(ClientEvent.Room, (room: Room) => {
-    const summary = buildRoomSummary(room, client);
-    const rooms = new Map(useRoomStore.getState().rooms);
-    rooms.set(room.roomId, summary);
-    // Resolve space parent if applicable
-    for (const existingRoom of client.getRooms()) {
-      if (existingRoom.isSpaceRoom()) {
-        const childEvents = existingRoom.currentState.getStateEvents("m.space.child");
-        for (const ev of childEvents) {
-          if (ev.getStateKey() === room.roomId) {
-            summary.parentSpaceId = existingRoom.roomId;
+    try {
+      const summary = buildRoomSummary(room, client);
+      const rooms = new Map(useRoomStore.getState().rooms);
+      rooms.set(room.roomId, summary);
+      // Resolve space parent if applicable
+      for (const existingRoom of client.getRooms()) {
+        if (existingRoom.isSpaceRoom()) {
+          const childEvents = existingRoom.currentState.getStateEvents("m.space.child");
+          for (const ev of childEvents) {
+            if (ev.getStateKey() === room.roomId) {
+              summary.parentSpaceId = existingRoom.roomId;
+            }
           }
         }
       }
+      useRoomStore.getState().setRooms(rooms);
+    } catch (err) {
+      console.warn("ClientEvent.Room handler error:", err);
     }
-    useRoomStore.getState().setRooms(rooms);
   });
 
   // Handle membership changes (new invites, joins, leaves)
   client.on(RoomEvent.MyMembership, (room, membership: Membership) => {
-    if (membership === "invite" || membership === "join") {
-      const summary = buildRoomSummary(room, client);
-      const rooms = new Map(useRoomStore.getState().rooms);
-      rooms.set(room.roomId, summary);
-      useRoomStore.getState().setRooms(rooms);
-    } else if (membership === "leave") {
-      useRoomStore.getState().removeRoom(room.roomId);
+    try {
+      if (membership === "invite" || membership === "join") {
+        const summary = buildRoomSummary(room, client);
+        const rooms = new Map(useRoomStore.getState().rooms);
+        rooms.set(room.roomId, summary);
+        useRoomStore.getState().setRooms(rooms);
+      } else if (membership === "leave") {
+        useRoomStore.getState().removeRoom(room.roomId);
+      }
+    } catch (err) {
+      console.warn("RoomEvent.MyMembership handler error:", err);
     }
   });
 

@@ -3,6 +3,15 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 
 let matrixClient: sdk.MatrixClient | null = null;
 
+/** Registered by App.tsx so React re-renders when the client changes. */
+let _onClientChanged: (() => void) | null = null;
+export function setClientChangeNotifier(fn: (() => void) | null) {
+  _onClientChanged = fn;
+}
+function emitClientChanged() {
+  try { _onClientChanged?.(); } catch { /* noop */ }
+}
+
 function deleteDatabase(name: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const req = globalThis.indexedDB.deleteDatabase(name);
@@ -59,6 +68,7 @@ async function createClient(
   // and starts them after initial sync completes (if WebRTC is supported).
   await matrixClient.startClient({ initialSyncLimit: 20 });
 
+  emitClientChanged();
   return matrixClient;
 }
 
@@ -91,6 +101,7 @@ export async function destroyMatrixClient(): Promise<void> {
   if (matrixClient) {
     matrixClient.stopClient();
     matrixClient = null;
+    emitClientChanged();
   }
 }
 

@@ -71,6 +71,31 @@ function MessageBody({ message }: { message: Message }) {
   );
 }
 
+function ThreadBadge({ message }: { message: Message }) {
+  const openThread = useMessageStore((s) => s.openThread);
+
+  if (message.threadReplyCount <= 0) return null;
+
+  return (
+    <button
+      onClick={() => openThread(message.roomId, message.eventId)}
+      className="mt-1 flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-accent transition-colors hover:bg-accent/10"
+    >
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+      </svg>
+      <span className="text-xs font-medium">
+        {message.threadReplyCount} {message.threadReplyCount === 1 ? "reply" : "replies"}
+      </span>
+      {message.threadLastReplyTs && (
+        <span className="text-[10px] text-text-muted">
+          Last reply {formatTimestamp(message.threadLastReplyTs)}
+        </span>
+      )}
+    </button>
+  );
+}
+
 export function MessageItem({ message, showHeader }: MessageItemProps) {
   const [showQuickPicker, setShowQuickPicker] = useState(false);
   const [showFullPicker, setShowFullPicker] = useState(false);
@@ -95,6 +120,12 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showFullPicker]);
+
+  const openThread = useMessageStore((s) => s.openThread);
+
+  const handleOpenThread = () => {
+    openThread(message.roomId, message.eventId);
+  };
 
   const handleReply = () => {
     setReplyingTo(message);
@@ -153,6 +184,18 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
 
   const actionButtons = !message.isRedacted && (
     <div className="absolute -top-3 right-4 hidden gap-0.5 rounded bg-bg-floating shadow group-hover:flex">
+      {/* Thread — only show on non-thread messages */}
+      {!message.threadRootId && (
+        <button
+          onClick={handleOpenThread}
+          className="rounded p-1.5 text-text-muted hover:bg-bg-hover hover:text-text-primary"
+          title="Start Thread"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+          </svg>
+        </button>
+      )}
       <button
         onClick={handleReply}
         className="rounded p-1.5 text-text-muted hover:bg-bg-hover hover:text-text-primary"
@@ -293,6 +336,7 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
             <MessageBody message={message} />
           </div>
           <ReactionBar reactions={message.reactions} eventId={message.eventId} roomId={message.roomId} />
+          <ThreadBadge message={message} />
         </div>
         {popoverAnchor && (
           <UserPopover
@@ -338,6 +382,7 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
           </div>
           <MessageBody message={message} />
           <ReactionBar reactions={message.reactions} eventId={message.eventId} roomId={message.roomId} />
+          <ThreadBadge message={message} />
         </div>
         {popoverAnchor && (
           <UserPopover
@@ -368,6 +413,7 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
         {message.replyToEvent && <ReplyContext reply={message.replyToEvent} />}
         <MessageBody message={message} />
         <ReactionBar reactions={message.reactions} eventId={message.eventId} roomId={message.roomId} />
+        <ThreadBadge message={message} />
       </div>
     </div>
   );

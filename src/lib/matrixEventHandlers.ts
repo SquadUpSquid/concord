@@ -59,6 +59,32 @@ function mapEventToMessage(event: MatrixEvent, client: MatrixClient): Message {
     // Ignore — reactions are optional
   }
 
+  // Check for thread relation
+  const threadRelation = content["m.relates_to"];
+  const threadRootId =
+    threadRelation?.rel_type === "m.thread" ? (threadRelation.event_id ?? null) : null;
+
+  // Count thread replies if this event is a thread root
+  let threadReplyCount = 0;
+  let threadLastReplyTs: number | null = null;
+  try {
+    const room = client.getRoom(event.getRoomId() ?? "");
+    if (room) {
+      const threadRelations = room.relations?.getChildEventsForEvent(
+        event.getId() ?? "", "m.thread", "m.room.message"
+      );
+      if (threadRelations) {
+        const events = threadRelations.getRelations();
+        threadReplyCount = events.length;
+        if (events.length > 0) {
+          threadLastReplyTs = events[events.length - 1].getTs();
+        }
+      }
+    }
+  } catch {
+    // Thread counting is best-effort
+  }
+
   return {
     eventId: event.getId() ?? "",
     roomId: event.getRoomId() ?? "",
@@ -78,6 +104,9 @@ function mapEventToMessage(event: MatrixEvent, client: MatrixClient): Message {
     reactions,
     url: effectiveContent.url ?? null,
     info: effectiveContent.info ?? null,
+    threadRootId,
+    threadReplyCount,
+    threadLastReplyTs,
   };
 }
 
@@ -329,6 +358,56 @@ export function loadRoomMessages(client: MatrixClient, roomId: string): void {
 
   useMessageStore.getState().setMessages(roomId, messages);
   syncRoomMembers(client, roomId);
+}
+
+export async function loadThreadMessages(
+  client: MatrixClient,
+  roomId: string,
+  threadRootId: string
+): Promise<void> {
+  const room = client.getRoom(roomId);
+  if (!room) return;
+
+  try {
+    // Fetch thread events using the relations API
+    const response = await client.relations(
+      roomId,
+      threadRootId,
+      "m.thread",
+      "m.room.message",
+      { limit: 100 }
+    );
+
+    const threadMsgs: Message[] = [];
+
+    // First, include the thread root message itself
+    const rootEvent = room.findEventById(threadRootId);
+    if (rootEvent) {
+      threadMsgs.push(mapEventToMessage(rootEvent, client));
+    }
+
+    // Then add all thread replies
+    if (response?.events) {
+      for (const evt of response.events) {
+        const mapped = mapEventToMessage(evt as MatrixEvent, client);
+        threadMsgs.push(mapped);
+      }
+    }
+
+    // Sort by timestamp
+    threadMsgs.sort((a, b) => a.timestamp - b.timestamp);
+    useMessageStore.getState().setThreadMessages(threadRootId, threadMsgs);
+  } catch (err) {
+    console.error("Failed to load thread messages:", err);
+
+    // Fallback: just show the root message
+    const rootEvent = room.findEventById(threadRootId);
+    if (rootEvent) {
+      useMessageStore.getState().setThreadMessages(threadRootId, [
+        mapEventToMessage(rootEvent, client),
+      ]);
+    }
+  }
 }
 
 export async function loadMoreMessages(

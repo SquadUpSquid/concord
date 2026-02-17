@@ -24,10 +24,16 @@ export interface Message {
   reactions: Reaction[];
   url: string | null;
   info: { mimetype?: string; size?: number; w?: number; h?: number } | null;
+  threadRootId: string | null;
+  threadReplyCount: number;
+  threadLastReplyTs: number | null;
 }
 
 interface MessageState {
   messagesByRoom: Map<string, Message[]>;
+  threadMessages: Map<string, Message[]>; // threadRootId -> messages
+  activeThreadId: string | null;
+  activeThreadRoomId: string | null;
   isLoadingHistory: boolean;
   replyingTo: Message | null;
   editingMessage: Message | null;
@@ -41,15 +47,47 @@ interface MessageState {
   updateMessage: (roomId: string, eventId: string, partial: Partial<Message>) => void;
   removeMessage: (roomId: string, eventId: string) => void;
   updateReactions: (roomId: string, eventId: string, reactions: Reaction[]) => void;
+  openThread: (roomId: string, threadRootId: string) => void;
+  closeThread: () => void;
+  setThreadMessages: (threadRootId: string, messages: Message[]) => void;
+  addThreadMessage: (threadRootId: string, message: Message) => void;
 }
 
 export const useMessageStore = create<MessageState>()((set, get) => ({
   messagesByRoom: new Map(),
+  threadMessages: new Map(),
+  activeThreadId: null,
+  activeThreadRoomId: null,
   isLoadingHistory: false,
   replyingTo: null,
   editingMessage: null,
 
   addMessage: (roomId, message) => {
+    // If this message belongs to a thread, route it to thread messages and update the root
+    if (message.threadRootId) {
+      const threadMap = new Map(get().threadMessages);
+      const existing = threadMap.get(message.threadRootId) ?? [];
+      threadMap.set(message.threadRootId, [...existing, message]);
+
+      // Update the thread root's reply count in the main room messages
+      const roomMap = new Map(get().messagesByRoom);
+      const roomMsgs = roomMap.get(roomId);
+      if (roomMsgs) {
+        const updated = roomMsgs.map((m) =>
+          m.eventId === message.threadRootId
+            ? {
+                ...m,
+                threadReplyCount: m.threadReplyCount + 1,
+                threadLastReplyTs: message.timestamp,
+              }
+            : m
+        );
+        roomMap.set(roomId, updated);
+      }
+      set({ threadMessages: threadMap, messagesByRoom: roomMap });
+      return;
+    }
+
     const map = new Map(get().messagesByRoom);
     const existing = map.get(roomId) ?? [];
     map.set(roomId, [...existing, message]);
@@ -103,5 +141,25 @@ export const useMessageStore = create<MessageState>()((set, get) => ({
     );
     map.set(roomId, updated);
     set({ messagesByRoom: map });
+  },
+
+  openThread: (roomId, threadRootId) =>
+    set({ activeThreadId: threadRootId, activeThreadRoomId: roomId }),
+
+  closeThread: () =>
+    set({ activeThreadId: null, activeThreadRoomId: null }),
+
+  setThreadMessages: (threadRootId, messages) => {
+    const map = new Map(get().threadMessages);
+    map.set(threadRootId, messages);
+    set({ threadMessages: map });
+  },
+
+  addThreadMessage: (threadRootId, message) => {
+    const map = new Map(get().threadMessages);
+    const existing = map.get(threadRootId) ?? [];
+    if (existing.some((m) => m.eventId === message.eventId)) return;
+    map.set(threadRootId, [...existing, message]);
+    set({ threadMessages: map });
   },
 }));

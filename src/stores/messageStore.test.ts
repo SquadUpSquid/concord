@@ -20,6 +20,9 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
     reactions: [],
     url: null,
     info: null,
+    threadRootId: null,
+    threadReplyCount: 0,
+    threadLastReplyTs: null,
     ...overrides,
   };
 }
@@ -28,6 +31,9 @@ describe("messageStore", () => {
   beforeEach(() => {
     useMessageStore.setState({
       messagesByRoom: new Map(),
+      threadMessages: new Map(),
+      activeThreadId: null,
+      activeThreadRoomId: null,
       isLoadingHistory: false,
       replyingTo: null,
       editingMessage: null,

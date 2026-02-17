@@ -1,8 +1,47 @@
+import { useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { getMatrixClient } from "@/lib/matrix";
+import { useAuthStore } from "@/stores/authStore";
 import { mxcToHttp, mxcToFullUrl } from "@/utils/matrixHelpers";
+import { ImageLightbox } from "@/components/common/ImageLightbox";
+
+const MENTION_REGEX = /@([a-zA-Z0-9._=-]+:[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+
+function highlightMentions(text: string, myUserId: string | null): ReactNode[] {
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  const regex = new RegExp(MENTION_REGEX.source, "g");
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const fullMention = match[0];
+    const isMe = fullMention === myUserId;
+    parts.push(
+      <span
+        key={match.index}
+        className={`rounded px-1 py-0.5 font-medium ${
+          isMe
+            ? "bg-accent/30 text-accent"
+            : "bg-accent/15 text-accent"
+        }`}
+      >
+        {fullMention}
+      </span>
+    );
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : [text];
+}
 
 interface MessageContentProps {
   body: string;
@@ -13,6 +52,7 @@ interface MessageContentProps {
 }
 
 export function MessageContent({ body, formattedBody: _formattedBody, msgtype, url, info }: MessageContentProps) {
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const client = getMatrixClient();
   const homeserverUrl = client?.getHomeserverUrl() ?? "";
 
@@ -22,14 +62,21 @@ export function MessageContent({ body, formattedBody: _formattedBody, msgtype, u
     const fullUrl = mxcToFullUrl(url, homeserverUrl);
     return (
       <div className="message-content my-1">
-        <a href={fullUrl ?? undefined} target="_blank" rel="noopener noreferrer">
+        {lightboxSrc && (
+          <ImageLightbox
+            src={lightboxSrc}
+            alt={body}
+            onClose={() => setLightboxSrc(null)}
+          />
+        )}
+        <button onClick={() => setLightboxSrc(fullUrl ?? thumbUrl ?? "")} className="block">
           <img
             src={thumbUrl ?? undefined}
             alt={body}
-            className="max-h-[300px] max-w-[400px] rounded-lg object-contain"
+            className="max-h-[300px] max-w-[400px] cursor-pointer rounded-lg object-contain transition-opacity hover:opacity-90"
             loading="lazy"
           />
-        </a>
+        </button>
         {body && !body.startsWith("image") && (
           <p className="mt-1 text-xs text-text-muted">{body}</p>
         )}
@@ -92,13 +139,25 @@ export function MessageContent({ body, formattedBody: _formattedBody, msgtype, u
   }
 
   // Text message (default) — render as markdown
+  const myUserId = useAuthStore.getState().userId;
+  const isMentioned = myUserId ? body.includes(myUserId) : false;
+
   return (
-    <div className="message-content text-sm text-text-secondary">
+    <div className={`message-content text-sm text-text-secondary ${isMentioned ? "border-l-2 border-accent pl-2" : ""}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
         components={{
-          p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+          p: ({ children }) => {
+            const processed = Array.isArray(children)
+              ? children.map((child, i) =>
+                  typeof child === "string" ? <span key={i}>{highlightMentions(child, myUserId)}</span> : child
+                )
+              : typeof children === "string"
+                ? highlightMentions(children, myUserId)
+                : children;
+            return <p className="mb-1 last:mb-0">{processed}</p>;
+          },
           a: ({ href, children }) => (
             <a
               href={href}

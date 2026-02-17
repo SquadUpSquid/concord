@@ -217,12 +217,18 @@ export function ChannelSidebar() {
 
       {/* User section */}
       <div className="flex items-center gap-2 border-t border-bg-tertiary bg-bg-floating/50 px-2 py-2">
-        <Avatar
-          name={displayName}
-          url={avatarUrl}
-          size={32}
-          presence={myPresence}
-        />
+        <button
+          onClick={() => openModal("userSettings")}
+          className="flex-shrink-0 cursor-pointer rounded-full transition-opacity hover:opacity-80"
+          title="User settings"
+        >
+          <Avatar
+            name={displayName}
+            url={avatarUrl}
+            size={32}
+            presence={myPresence}
+          />
+        </button>
         <div className="flex-1 overflow-hidden">
           <p className="truncate text-sm font-medium text-text-primary">
             {displayName}

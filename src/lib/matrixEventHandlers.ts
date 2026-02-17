@@ -1,5 +1,6 @@
 import { MatrixClient, ClientEvent, RoomEvent, RoomMemberEvent, MatrixEvent, Room, Membership } from "matrix-js-sdk";
 import { useRoomStore, RoomSummary, ChannelType, RoomMembership } from "@/stores/roomStore";
+import { requestNotificationPermission, sendMessageNotification, updateTitleWithUnread } from "@/lib/notifications";
 import { useMessageStore, Message } from "@/stores/messageStore";
 import { useMemberStore, Member } from "@/stores/memberStore";
 import { useTypingStore } from "@/stores/typingStore";
@@ -204,10 +205,14 @@ export function registerEventHandlers(client: MatrixClient): void {
     if (state === "PREPARED" || state === "SYNCING") {
       useRoomStore.getState().setSyncState("PREPARED");
       syncRoomList(client);
+      updateTitleWithUnread();
     } else if (state === "ERROR") {
       useRoomStore.getState().setSyncState("ERROR");
     }
   });
+
+  // Request notification permission once sync is ready
+  requestNotificationPermission();
 
   client.on(RoomEvent.Timeline, (event, room, toStartOfTimeline) => {
     if (toStartOfTimeline || !room) return;
@@ -227,6 +232,13 @@ export function registerEventHandlers(client: MatrixClient): void {
       } else {
         const message = mapEventToMessage(event, client);
         useMessageStore.getState().addMessage(room.roomId, message);
+
+        // Send desktop notification for messages from other people
+        const myUserId = client.getUserId();
+        if (message.senderId !== myUserId && message.body) {
+          const roomName = room.name ?? "Unknown Room";
+          sendMessageNotification(message.senderName, message.body, room.roomId, roomName);
+        }
       }
     }
 
@@ -243,6 +255,7 @@ export function registerEventHandlers(client: MatrixClient): void {
       lastMessageTs: event.getTs(),
       unreadCount: room.getUnreadNotificationCount() ?? 0,
     });
+    updateTitleWithUnread();
   });
 
   // Handle redactions (message deletions)

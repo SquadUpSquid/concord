@@ -66,15 +66,18 @@ export function ProfileSection() {
 
   return (
     <div>
-      <h2 className="mb-6 text-xl font-bold text-text-primary">My Account</h2>
+      <h2 className="mb-2 text-xl font-bold text-text-primary">My Account</h2>
+      <p className="mb-6 text-sm text-text-muted">
+        Manage your profile information and account details.
+      </p>
 
       {/* Profile card */}
       <div className="overflow-hidden rounded-lg bg-bg-secondary">
         <div className="h-24 bg-accent" />
-        <div className="px-6 pb-6">
-          <div className="-mt-12 flex items-end gap-4">
-            <div className="relative">
-              <div className="rounded-full border-4 border-bg-secondary">
+        <div className="px-6 pb-5">
+          <div className="-mt-10 flex items-end gap-4">
+            <div className="relative flex-shrink-0">
+              <div className="rounded-full border-[5px] border-bg-secondary">
                 <Avatar name={displayName || "?"} url={avatarHttpUrl} size={80} />
               </div>
               {uploadingAvatar && (
@@ -83,17 +86,23 @@ export function ProfileSection() {
                 </div>
               )}
             </div>
-            <div className="mb-2">
-              <p className="text-lg font-bold text-text-primary">{displayName || userId}</p>
-              <p className="text-sm text-text-muted">{userId}</p>
+            <div className="min-w-0 pb-1">
+              <p className="truncate text-lg font-bold leading-tight text-text-primary">
+                {displayName || userId}
+              </p>
+              <p className="truncate text-sm leading-snug text-text-muted">{userId}</p>
             </div>
           </div>
         </div>
       </div>
 
       {/* Edit profile */}
-      <div className="mt-6 rounded-lg bg-bg-secondary p-6">
-        <div className="mb-4 flex items-center gap-4">
+      <div className="mt-4 rounded-lg bg-bg-secondary p-5">
+        <h3 className="mb-4 text-xs font-bold uppercase tracking-wide text-text-secondary">
+          Profile
+        </h3>
+
+        <div className="mb-4 flex items-center gap-3">
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadingAvatar}
@@ -107,7 +116,7 @@ export function ProfileSection() {
               disabled={uploadingAvatar}
               className="rounded-sm px-3 py-1.5 text-sm text-text-muted hover:text-red disabled:opacity-50"
             >
-              Remove
+              Remove Avatar
             </button>
           )}
           <input
@@ -124,22 +133,33 @@ export function ProfileSection() {
         </div>
 
         <div className="mb-4">
-          <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
+          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-text-secondary">
             Display Name
           </label>
           <input
             type="text"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            className="w-full rounded-sm bg-bg-input p-2.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent"
+            className="w-full rounded-sm bg-bg-input px-3 py-2 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
 
         <div className="mb-4">
-          <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
+          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-text-secondary">
+            User ID
+          </label>
+          <div className="rounded-sm bg-bg-input px-3 py-2 text-sm text-text-muted">
+            {userId}
+          </div>
+        </div>
+
+        <div className="mb-5">
+          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-text-secondary">
             Homeserver
           </label>
-          <div className="rounded-sm bg-bg-input p-2.5 text-sm text-text-muted">{homeserverUrl}</div>
+          <div className="rounded-sm bg-bg-input px-3 py-2 text-sm text-text-muted">
+            {homeserverUrl}
+          </div>
         </div>
 
         {error && <p className="mb-3 text-sm text-red">{error}</p>}

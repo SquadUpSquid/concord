@@ -41,6 +41,19 @@ const THEME_VARS: Record<string, Record<string, string>> = {
     "--color-text-muted": "#80848e",
     "--color-text-link": "#006ce7",
   },
+  grape: {
+    "--color-bg-primary": "#2a1e35",
+    "--color-bg-secondary": "#231a2e",
+    "--color-bg-tertiary": "#1a1224",
+    "--color-bg-floating": "#140e1c",
+    "--color-bg-input": "#352840",
+    "--color-bg-hover": "#32253e",
+    "--color-bg-active": "#3d2e4a",
+    "--color-text-primary": "#f0eaf5",
+    "--color-text-secondary": "#bfb0d0",
+    "--color-text-muted": "#8a7a9e",
+    "--color-text-link": "#c084fc",
+  },
 };
 
 const FONT_SIZE_MAP: Record<string, string> = {

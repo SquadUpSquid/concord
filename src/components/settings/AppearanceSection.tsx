@@ -3,6 +3,7 @@ import { useSettingsStore, type ThemeMode, type FontSize, type MessageDisplay } 
 const THEMES: { id: ThemeMode; label: string; colors: { bg: string; sidebar: string; accent: string } }[] = [
   { id: "dark", label: "Dark", colors: { bg: "#313338", sidebar: "#2b2d31", accent: "#5865f2" } },
   { id: "midnight", label: "Midnight", colors: { bg: "#0e0e12", sidebar: "#0a0a0e", accent: "#5865f2" } },
+  { id: "grape", label: "Grape", colors: { bg: "#2a1e35", sidebar: "#231a2e", accent: "#9b59b6" } },
   { id: "light", label: "Light", colors: { bg: "#ffffff", sidebar: "#f2f3f5", accent: "#5865f2" } },
 ];
 
@@ -30,7 +31,7 @@ export function AppearanceSection() {
       {/* Theme */}
       <div className="mb-6 rounded-lg bg-bg-secondary p-5">
         <h3 className="mb-4 text-sm font-bold uppercase text-text-secondary">Theme</h3>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {THEMES.map((t) => (
             <button
               key={t.id}

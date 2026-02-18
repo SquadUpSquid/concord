@@ -13,11 +13,14 @@ interface DeviceInfo {
 const DEFAULT_LABEL = "Default device";
 
 async function requestDeviceLabels(): Promise<void> {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-    stream.getTracks().forEach((t) => t.stop());
-  } catch {
-    // Permission denied or no devices — labels may be empty
+  // Request audio and video separately so a missing camera doesn't block microphone access
+  for (const constraint of [{ audio: true }, { video: true }]) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(constraint);
+      stream.getTracks().forEach((t) => t.stop());
+    } catch {
+      // Permission denied or no devices for this media kind
+    }
   }
 }
 
@@ -37,25 +40,38 @@ export function VoiceVideoSection() {
     setLoading(true);
     setError(null);
     try {
+      if (!navigator.mediaDevices?.enumerateDevices) {
+        setError("Media device APIs are not available. Your system may not support WebRTC.");
+        setDevices([]);
+        return;
+      }
+
       await requestDeviceLabels();
       const list = await navigator.mediaDevices.enumerateDevices();
+      const filtered = list.filter(
+        (d) =>
+          d.kind === "audioinput" ||
+          d.kind === "audiooutput" ||
+          d.kind === "videoinput"
+      );
+
+      if (filtered.length === 0) {
+        setError(
+          "No audio or video devices detected. If you're on WSL2, make sure PulseAudio/PipeWire is running. " +
+          "You can still join voice channels and hear others."
+        );
+      }
+
       setDevices(
-        list
-          .filter(
-            (d) =>
-              d.kind === "audioinput" ||
-              d.kind === "audiooutput" ||
-              d.kind === "videoinput"
-          )
-          .map((d) => ({
-            deviceId: d.deviceId,
-            label: d.label || `${d.kind} (${d.deviceId.slice(0, 8)}…)`,
-            kind: d.kind as DeviceInfo["kind"],
-          }))
+        filtered.map((d) => ({
+          deviceId: d.deviceId,
+          label: d.label || `${d.kind} (${d.deviceId.slice(0, 8)}…)`,
+          kind: d.kind as DeviceInfo["kind"],
+        }))
       );
     } catch (err) {
       console.error("Failed to list devices:", err);
-      setError("Could not access microphone or camera. Check browser permissions.");
+      setError("Could not access microphone or camera. Check system permissions.");
     } finally {
       setLoading(false);
     }

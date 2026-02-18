@@ -268,6 +268,14 @@ function toUserFriendlyError(err: unknown): string {
 
   const msg = err instanceof Error ? err.message : String(err);
 
+  if (msg.includes("WebRTC") || msg.includes("webRTC") || msg.includes("not supported on this browser")) {
+    return (
+      "WebRTC is not available. Ubuntu/Debian ship WebKitGTK without WebRTC support. " +
+      "Voice calls work on Windows and macOS. On Linux, a custom WebKitGTK build " +
+      "with -DENABLE_WEB_RTC=ON is required."
+    );
+  }
+
   if (msg.includes("power level") || msg.includes("not permitted") || msg.includes("403")) {
     return "You don't have permission to start a call in this room. Ask an admin to grant you permission, or wait for someone else to start the call.";
   }
@@ -488,7 +496,7 @@ export const useCallStore = create<CallState>()((set, get) => ({
         toggleLkMic().then(() => {
           const lkRoom = getActiveLkRoom();
           if (lkRoom?.localParticipant.isMicrophoneEnabled) {
-            lkRoom.localParticipant.setMicrophoneEnabled(false);
+            lkRoom.localParticipant.setMicrophoneEnabled(false).catch(() => {});
           }
           set({ isMicMuted: true });
         });
@@ -496,7 +504,7 @@ export const useCallStore = create<CallState>()((set, get) => ({
         const restoreMuted = get().wasMicMutedBeforeDeafen;
         set({ isDeafened: false });
         const lkRoom = getActiveLkRoom();
-        lkRoom?.localParticipant.setMicrophoneEnabled(!restoreMuted);
+        lkRoom?.localParticipant.setMicrophoneEnabled(!restoreMuted).catch(() => {});
         set({ isMicMuted: restoreMuted });
       }
       return;

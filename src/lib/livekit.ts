@@ -8,6 +8,7 @@ import {
   Participant,
   DisconnectReason,
 } from "livekit-client";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import type { MatrixClient } from "matrix-js-sdk";
 import { useCallStore, CallParticipant } from "@/stores/callStore";
 import { mxcToHttp } from "@/utils/matrixHelpers";
@@ -105,7 +106,12 @@ export async function fetchLivekitToken(
     device_id: deviceId,
   };
 
-  const res = await fetch(livekitServiceUrl, {
+  // The livekit_service_url from state events is the base URL (e.g.
+  // https://host/livekit/jwt). The legacy endpoint is at /sfu/get under that.
+  const base = livekitServiceUrl.replace(/\/+$/, "");
+  const sfuUrl = `${base}/sfu/get`;
+
+  const res = await tauriFetch(sfuUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -312,6 +318,20 @@ function rebuildScreenshareFeeds(
 // Connection lifecycle
 // ---------------------------------------------------------------------------
 
+export function checkWebRTCSupport(): string | null {
+  if (typeof RTCPeerConnection === "undefined") {
+    return (
+      "WebRTC is not available. Ubuntu/Debian ship WebKitGTK without WebRTC support. " +
+      "Voice calls work on Windows and macOS. On Linux, a custom WebKitGTK build with " +
+      "-DENABLE_WEB_RTC=ON is required."
+    );
+  }
+  if (typeof navigator.mediaDevices === "undefined") {
+    return "Media device APIs are not available. WebRTC calls require a secure context.";
+  }
+  return null;
+}
+
 export async function joinLivekitCall(
   matrixClient: MatrixClient,
   roomId: string,
@@ -319,6 +339,9 @@ export async function joinLivekitCall(
   jwt: string,
   focus: LivekitFocus,
 ): Promise<void> {
+  const webrtcErr = checkWebRTCSupport();
+  if (webrtcErr) throw new Error(webrtcErr);
+
   const lkRoom = new Room({
     adaptiveStream: true,
     dynacast: true,
@@ -402,8 +425,15 @@ export async function joinLivekitCall(
   await writeCallMemberEvent(matrixClient, roomId, focus, true);
   startMembershipRenewal(matrixClient, roomId, focus);
 
-  // Enable microphone (voice-first)
-  await lkRoom.localParticipant.setMicrophoneEnabled(true);
+  // Enable microphone (voice-first). This can fail if no devices are available
+  // (e.g. WSL2, permission denied) -- connect anyway so the user can hear others.
+  let micEnabled = false;
+  try {
+    await lkRoom.localParticipant.setMicrophoneEnabled(true);
+    micEnabled = lkRoom.localParticipant.isMicrophoneEnabled;
+  } catch (err) {
+    console.warn("[livekit] Could not enable microphone:", err);
+  }
 
   // Build initial participant list and streams
   syncStreamsFromRoom(lkRoom);
@@ -414,10 +444,10 @@ export async function joinLivekitCall(
     connectionState: "connected",
     participants,
     screenshareFeeds,
-    isMicMuted: !lkRoom.localParticipant.isMicrophoneEnabled,
+    isMicMuted: !micEnabled,
     isVideoMuted: !lkRoom.localParticipant.isCameraEnabled,
     isScreenSharing: lkRoom.localParticipant.isScreenShareEnabled,
-    error: null,
+    error: micEnabled ? null : "No microphone detected. You can hear others but cannot speak.",
   });
 }
 
@@ -445,27 +475,42 @@ export async function leaveLivekitCall(matrixClient: MatrixClient): Promise<void
 
 export async function toggleLkMic(): Promise<boolean> {
   if (!activeLkRoom) return false;
-  const lp = activeLkRoom.localParticipant;
-  const newEnabled = !lp.isMicrophoneEnabled;
-  await lp.setMicrophoneEnabled(newEnabled);
-  return true;
+  try {
+    const lp = activeLkRoom.localParticipant;
+    const newEnabled = !lp.isMicrophoneEnabled;
+    await lp.setMicrophoneEnabled(newEnabled);
+    return true;
+  } catch (err) {
+    console.warn("[livekit] Failed to toggle microphone:", err);
+    return false;
+  }
 }
 
 export async function toggleLkVideo(): Promise<boolean> {
   if (!activeLkRoom) return false;
-  const lp = activeLkRoom.localParticipant;
-  const newEnabled = !lp.isCameraEnabled;
-  await lp.setCameraEnabled(newEnabled);
-  syncStreamsFromRoom(activeLkRoom);
-  return true;
+  try {
+    const lp = activeLkRoom.localParticipant;
+    const newEnabled = !lp.isCameraEnabled;
+    await lp.setCameraEnabled(newEnabled);
+    syncStreamsFromRoom(activeLkRoom);
+    return true;
+  } catch (err) {
+    console.warn("[livekit] Failed to toggle camera:", err);
+    return false;
+  }
 }
 
 export async function toggleLkScreenShare(): Promise<boolean> {
   if (!activeLkRoom) return false;
-  const lp = activeLkRoom.localParticipant;
-  const newEnabled = !lp.isScreenShareEnabled;
-  await lp.setScreenShareEnabled(newEnabled);
-  return true;
+  try {
+    const lp = activeLkRoom.localParticipant;
+    const newEnabled = !lp.isScreenShareEnabled;
+    await lp.setScreenShareEnabled(newEnabled);
+    return true;
+  } catch (err) {
+    console.warn("[livekit] Failed to toggle screen share:", err);
+    return false;
+  }
 }
 
 export async function switchLkDevice(

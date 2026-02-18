@@ -86,27 +86,31 @@ export function ChannelSidebar() {
   const voiceChannels = sortChannelsByOrder(voiceChannelsRaw, voiceOrder);
 
   const canReorder = selectedSpaceId !== null;
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
   function handleDragStart(e: React.DragEvent, roomId: string, type: ChannelListType) {
     e.dataTransfer.setData(CHANNEL_DND_TYPE, JSON.stringify({ roomId, type }));
     e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", ""); // some browsers need this
+    e.dataTransfer.setData("text/plain", "");
+    setDraggingId(roomId);
   }
 
-  function handleDragOver(e: React.DragEvent, type: ChannelListType, index: number) {
+  function handleItemDragOver(e: React.DragEvent, type: ChannelListType, index: number) {
     if (!e.dataTransfer.types.includes(CHANNEL_DND_TYPE)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
-    setDragOverIndex({ type, index });
+    // Top half of element = insert before (index), bottom half = insert after (index + 1)
+    const rect = e.currentTarget.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const insertAt = e.clientY < midY ? index : index + 1;
+    setDragOverIndex({ type, index: insertAt });
   }
 
-  function handleDragLeave() {
-    setDragOverIndex(null);
-  }
-
-  function handleDrop(e: React.DragEvent, type: ChannelListType, insertIndex: number) {
+  function handleDrop(e: React.DragEvent, type: ChannelListType) {
     e.preventDefault();
+    const insertIndex = dragOverIndex?.index ?? 0;
     setDragOverIndex(null);
+    setDraggingId(null);
     try {
       const raw = e.dataTransfer.getData(CHANNEL_DND_TYPE);
       if (!raw) return;
@@ -121,6 +125,7 @@ export function ChannelSidebar() {
 
   function handleDragEnd() {
     setDragOverIndex(null);
+    setDraggingId(null);
   }
 
   const spaceName = selectedSpaceId
@@ -329,30 +334,21 @@ export function ChannelSidebar() {
                 </button>
                 {!textCollapsed && (
                   <div>
-                    {canReorder && textChannels.length > 0 && (
-                      <div
-                        onDragOver={(e) => handleDragOver(e, "text", 0)}
-                        onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDrop(e, "text", 0)}
-                        className={`min-h-[6px] transition-colors ${dragOverIndex?.type === "text" && dragOverIndex?.index === 0 ? "bg-accent/30" : "bg-transparent"}`}
-                      />
-                    )}
                     {textChannels.map((ch, i) => (
-                      <span key={ch.roomId} className="block">
-                        {canReorder && (
-                          <div
-                            onDragOver={(e) => handleDragOver(e, "text", i + 1)}
-                            onDragLeave={handleDragLeave}
-                            onDrop={(e) => handleDrop(e, "text", i + 1)}
-                            className={`min-h-[6px] transition-colors ${dragOverIndex?.type === "text" && dragOverIndex?.index === i + 1 ? "bg-accent/30" : "bg-transparent"}`}
-                          />
+                      <div
+                        key={ch.roomId}
+                        className="relative"
+                        draggable={canReorder}
+                        onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, "text") : undefined}
+                        onDragOver={canReorder ? (e) => handleItemDragOver(e, "text", i) : undefined}
+                        onDrop={canReorder ? (e) => handleDrop(e, "text") : undefined}
+                        onDragEnd={canReorder ? handleDragEnd : undefined}
+                      >
+                        {/* Drop indicator line — before this item */}
+                        {canReorder && dragOverIndex?.type === "text" && dragOverIndex.index === i && draggingId !== ch.roomId && (
+                          <div className="absolute left-1 right-1 top-0 z-10 h-0.5 rounded bg-accent" />
                         )}
-                        <div
-                          draggable={canReorder}
-                          onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, "text") : undefined}
-                          onDragEnd={canReorder ? handleDragEnd : undefined}
-                          className={canReorder ? "cursor-grab active:cursor-grabbing" : ""}
-                        >
+                        <div className={`${canReorder ? "cursor-grab active:cursor-grabbing" : ""} ${draggingId === ch.roomId ? "opacity-40" : ""}`}>
                           <ChannelItem
                             roomId={ch.roomId}
                             name={ch.name}
@@ -362,7 +358,11 @@ export function ChannelSidebar() {
                             onClick={() => selectRoom(ch.roomId)}
                           />
                         </div>
-                      </span>
+                        {/* Drop indicator line — after the last item */}
+                        {canReorder && dragOverIndex?.type === "text" && dragOverIndex.index === i + 1 && i === textChannels.length - 1 && draggingId !== ch.roomId && (
+                          <div className="absolute bottom-0 left-1 right-1 z-10 h-0.5 rounded bg-accent" />
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}
@@ -407,43 +407,34 @@ export function ChannelSidebar() {
                     {voiceChannels.length === 0 ? (
                       <p className="px-3 py-1 text-xs text-text-muted">No voice channels</p>
                     ) : (
-                      <>
-                        {canReorder && (
-                          <div
-                            onDragOver={(e) => handleDragOver(e, "voice", 0)}
-                            onDragLeave={handleDragLeave}
-                            onDrop={(e) => handleDrop(e, "voice", 0)}
-                            className={`min-h-[6px] transition-colors ${dragOverIndex?.type === "voice" && dragOverIndex?.index === 0 ? "bg-accent/30" : "bg-transparent"}`}
-                          />
-                        )}
-                        {voiceChannels.map((ch, i) => (
-                          <span key={ch.roomId} className="block">
-                            {canReorder && (
-                              <div
-                                onDragOver={(e) => handleDragOver(e, "voice", i + 1)}
-                                onDragLeave={handleDragLeave}
-                                onDrop={(e) => handleDrop(e, "voice", i + 1)}
-                                className={`min-h-[6px] transition-colors ${dragOverIndex?.type === "voice" && dragOverIndex?.index === i + 1 ? "bg-accent/30" : "bg-transparent"}`}
-                              />
-                            )}
-                            <div
-                              draggable={canReorder}
-                              onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, "voice") : undefined}
-                              onDragEnd={canReorder ? handleDragEnd : undefined}
-                              className={canReorder ? "cursor-grab active:cursor-grabbing" : ""}
-                            >
-                              <ChannelItem
-                                roomId={ch.roomId}
-                                name={ch.name}
-                                channelType={ch.channelType}
-                                unreadCount={ch.unreadCount}
-                                isSelected={selectedRoomId === ch.roomId}
-                                onClick={() => selectRoom(ch.roomId)}
-                              />
-                            </div>
-                          </span>
-                        ))}
-                      </>
+                      voiceChannels.map((ch, i) => (
+                        <div
+                          key={ch.roomId}
+                          className="relative"
+                          draggable={canReorder}
+                          onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, "voice") : undefined}
+                          onDragOver={canReorder ? (e) => handleItemDragOver(e, "voice", i) : undefined}
+                          onDrop={canReorder ? (e) => handleDrop(e, "voice") : undefined}
+                          onDragEnd={canReorder ? handleDragEnd : undefined}
+                        >
+                          {canReorder && dragOverIndex?.type === "voice" && dragOverIndex.index === i && draggingId !== ch.roomId && (
+                            <div className="absolute left-1 right-1 top-0 z-10 h-0.5 rounded bg-accent" />
+                          )}
+                          <div className={`${canReorder ? "cursor-grab active:cursor-grabbing" : ""} ${draggingId === ch.roomId ? "opacity-40" : ""}`}>
+                            <ChannelItem
+                              roomId={ch.roomId}
+                              name={ch.name}
+                              channelType={ch.channelType}
+                              unreadCount={ch.unreadCount}
+                              isSelected={selectedRoomId === ch.roomId}
+                              onClick={() => selectRoom(ch.roomId)}
+                            />
+                          </div>
+                          {canReorder && dragOverIndex?.type === "voice" && dragOverIndex.index === i + 1 && i === voiceChannels.length - 1 && draggingId !== ch.roomId && (
+                            <div className="absolute bottom-0 left-1 right-1 z-10 h-0.5 rounded bg-accent" />
+                          )}
+                        </div>
+                      ))
                     )}
                   </div>
                 )}

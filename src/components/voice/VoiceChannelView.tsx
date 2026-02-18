@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useCallStore, CallParticipant } from "@/stores/callStore";
 import { useRoomStore } from "@/stores/roomStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -5,7 +6,10 @@ import { useUiStore } from "@/stores/uiStore";
 import { Avatar } from "@/components/common/Avatar";
 import { VoiceParticipant } from "./VoiceParticipant";
 import { VoiceControlBar } from "./VoiceControlBar";
+import { VoiceChatPanel } from "./VoiceChatPanel";
 import { ScreenshareFeedView } from "./ScreenshareFeedView";
+import { getMatrixClient } from "@/lib/matrix";
+import { loadRoomMessages } from "@/lib/matrixEventHandlers";
 
 const EMPTY_PARTICIPANTS: CallParticipant[] = [];
 
@@ -29,6 +33,15 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
   const toggleMembers = useUiStore((s) => s.toggleMemberSidebar);
   const showMembers = useUiStore((s) => s.showMemberSidebar);
 
+  const [showChat, setShowChat] = useState(false);
+
+  useEffect(() => {
+    if (showChat) {
+      const client = getMatrixClient();
+      if (client) loadRoomMessages(client, roomId);
+    }
+  }, [showChat, roomId]);
+
   const isInThisCall = activeCallRoomId === roomId && connectionState === "connected";
   const isConnecting = activeCallRoomId === roomId && connectionState === "connecting";
   const hasError = activeCallRoomId === roomId && !!error;
@@ -47,7 +60,8 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
     "grid-cols-4";
 
   return (
-    <div className="flex flex-1 flex-col bg-bg-primary">
+    <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 flex-col bg-bg-primary">
       {/* Header */}
       <div className="flex h-12 items-center border-b border-bg-tertiary px-4 shadow-sm">
         <svg className="mr-2 h-5 w-5 text-text-muted" viewBox="0 0 24 24" fill="currentColor">
@@ -66,6 +80,18 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
           </>
         )}
         <div className="ml-auto flex items-center gap-1">
+          {/* Toggle chat */}
+          <button
+            onClick={() => setShowChat((v) => !v)}
+            className={`rounded p-1.5 transition-colors ${
+              showChat ? "bg-bg-active text-text-primary" : "text-text-muted hover:text-text-primary"
+            }`}
+            title="Toggle Chat"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z" />
+            </svg>
+          </button>
           {/* Channel settings */}
           <button
             onClick={() => openModal("roomSettings")}
@@ -218,7 +244,9 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
       </div>
 
       {/* Control bar - only show when in call */}
-      {isInThisCall && <VoiceControlBar />}
+        {isInThisCall && <VoiceControlBar />}
+      </div>
+      {showChat && <VoiceChatPanel roomId={roomId} onClose={() => setShowChat(false)} />}
     </div>
   );
 }

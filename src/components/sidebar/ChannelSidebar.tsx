@@ -84,14 +84,19 @@ export function ChannelSidebar() {
   // Build channel lookup for quick access
   const channelMap = new Map(channels.map((ch) => [ch.roomId, ch]));
 
-  // Channels assigned to a category (resolved from category channelIds)
+  // Channels assigned to a custom category
   const assignedChannelIds = new Set(categories.flatMap((c) => c.channelIds));
 
-  // Uncategorized channels (in space, not favorites, not assigned to any category)
-  const uncategorizedChannels = isHomeView
+  // Default sections: uncategorized text and voice channels (not favorites, not in a custom section)
+  const defaultTextChannels = isHomeView
     ? []
     : channels.filter(
-        (ch) => !channelPrefs[ch.roomId]?.isFavorite && !assignedChannelIds.has(ch.roomId)
+        (ch) => ch.channelType === "text" && !channelPrefs[ch.roomId]?.isFavorite && !assignedChannelIds.has(ch.roomId)
+      );
+  const defaultVoiceChannels = isHomeView
+    ? []
+    : channels.filter(
+        (ch) => ch.channelType === "voice" && !channelPrefs[ch.roomId]?.isFavorite && !assignedChannelIds.has(ch.roomId)
       );
 
   const canReorder = selectedSpaceId !== null;
@@ -318,7 +323,7 @@ export function ChannelSidebar() {
           </>
         )}
 
-        {/* ──── SPACE VIEW (favorites, categories, uncategorized) ──── */}
+        {/* ──── SPACE VIEW ──── */}
         {!isHomeView && (
           <>
             {channels.length === 0 && pendingInvites.length === 0 && (
@@ -327,20 +332,14 @@ export function ChannelSidebar() {
               </p>
             )}
 
-            {/* Favorites Section */}
+            {/* Favorites */}
             {favoriteChannels.length > 0 && (
               <div className="mb-1">
                 <button
                   onClick={() => setFavoritesCollapsed(!favoritesCollapsed)}
                   className="group flex w-full items-center gap-0.5 px-1 py-1.5"
                 >
-                  <svg
-                    className={`h-3 w-3 text-text-muted transition-transform ${
-                      favoritesCollapsed ? "-rotate-90" : ""
-                    }`}
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                  >
+                  <svg className={`h-3 w-3 text-text-muted transition-transform ${favoritesCollapsed ? "-rotate-90" : ""}`} viewBox="0 0 24 24" fill="currentColor">
                     <path d="M7 10l5 5 5-5z" />
                   </svg>
                   <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-yellow group-hover:text-yellow/80">
@@ -349,89 +348,95 @@ export function ChannelSidebar() {
                 </button>
                 {!favoritesCollapsed &&
                   favoriteChannels.map((ch) => (
-                    <ChannelItem
-                      key={ch.roomId}
-                      roomId={ch.roomId}
-                      name={ch.name}
-                      channelType={ch.channelType}
-                      unreadCount={ch.unreadCount}
-                      isSelected={selectedRoomId === ch.roomId}
-                      onClick={() => selectRoom(ch.roomId)}
-                    />
+                    <ChannelItem key={ch.roomId} roomId={ch.roomId} name={ch.name} channelType={ch.channelType} unreadCount={ch.unreadCount} isSelected={selectedRoomId === ch.roomId} onClick={() => selectRoom(ch.roomId)} />
                   ))}
               </div>
             )}
 
-            {/* User-created categories */}
+            {/* Default Text Channels section */}
+            <div className="mb-1">
+              <button
+                onClick={() => toggleSection("__text")}
+                className="group flex w-full items-center gap-0.5 px-1 py-1.5"
+              >
+                <svg className={`h-3 w-3 text-text-muted transition-transform ${collapsedSections["__text"] ? "-rotate-90" : ""}`} viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M7 10l5 5 5-5z" />
+                </svg>
+                <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary">
+                  Text Channels
+                </span>
+                <span onClick={(e) => { e.stopPropagation(); openModal("createRoom"); }} className="rounded p-0.5 text-text-muted opacity-0 hover:text-text-primary group-hover:opacity-100 cursor-pointer" title="Create channel">
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
+                </span>
+              </button>
+              {!collapsedSections["__text"] && (
+                <div>
+                  {defaultTextChannels.length === 0 ? (
+                    <p className="px-3 py-1 text-xs text-text-muted">No text channels</p>
+                  ) : (
+                    defaultTextChannels.map((ch, i) => (
+                      <div key={ch.roomId} className="relative" draggable={canReorder}
+                        onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, "__text") : undefined}
+                        onDragOver={canReorder ? (e) => handleItemDragOver(e, "__text", i) : undefined}
+                        onDrop={canReorder ? (e) => handleDrop(e, "__text") : undefined}
+                        onDragEnd={canReorder ? handleDragEnd : undefined}
+                      >
+                        {canReorder && dragOverTarget?.catId === "__text" && dragOverTarget.index === i && draggingId !== ch.roomId && (
+                          <div className="absolute left-1 right-1 top-0 z-10 h-0.5 rounded bg-accent" />
+                        )}
+                        <div className={`${canReorder ? "cursor-grab active:cursor-grabbing" : ""} ${draggingId === ch.roomId ? "opacity-40" : ""}`}>
+                          <ChannelItem roomId={ch.roomId} name={ch.name} channelType={ch.channelType} unreadCount={ch.unreadCount} isSelected={selectedRoomId === ch.roomId} onClick={() => selectRoom(ch.roomId)} />
+                        </div>
+                        {canReorder && dragOverTarget?.catId === "__text" && dragOverTarget.index === i + 1 && i === defaultTextChannels.length - 1 && draggingId !== ch.roomId && (
+                          <div className="absolute bottom-0 left-1 right-1 z-10 h-0.5 rounded bg-accent" />
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* User-created custom sections */}
             {categories.map((cat) => {
               const catChannels = getCategoryChannels(cat);
               const isCollapsed = collapsedSections[cat.id] ?? false;
               const isRenaming = renamingCatId === cat.id;
-
               return (
                 <div key={cat.id} className="mb-1">
                   <div className="group flex w-full items-center gap-0.5 px-1 py-1.5">
                     <button onClick={() => toggleSection(cat.id)} className="flex flex-1 items-center gap-0.5">
-                      <svg
-                        className={`h-3 w-3 text-text-muted transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
+                      <svg className={`h-3 w-3 text-text-muted transition-transform ${isCollapsed ? "-rotate-90" : ""}`} viewBox="0 0 24 24" fill="currentColor">
                         <path d="M7 10l5 5 5-5z" />
                       </svg>
                       {isRenaming ? (
-                        <input
-                          autoFocus
-                          value={renameCatName}
-                          onChange={(e) => setRenameCatName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") handleRenameCategory(cat.id);
-                            if (e.key === "Escape") { setRenamingCatId(null); setRenameCatName(""); }
-                          }}
+                        <input autoFocus value={renameCatName} onChange={(e) => setRenameCatName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleRenameCategory(cat.id); if (e.key === "Escape") { setRenamingCatId(null); setRenameCatName(""); } }}
                           onBlur={() => handleRenameCategory(cat.id)}
                           className="w-full bg-transparent text-[11px] font-semibold uppercase tracking-wide text-text-primary outline-none"
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : (
-                        <span
-                          className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary"
-                          onDoubleClick={() => { setRenamingCatId(cat.id); setRenameCatName(cat.name); }}
-                        >
+                        <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary"
+                          onDoubleClick={() => { setRenamingCatId(cat.id); setRenameCatName(cat.name); }}>
                           {cat.name}
                         </span>
                       )}
                     </button>
-                    {/* Create channel in this category */}
-                    <span
-                      onClick={(e) => { e.stopPropagation(); openModal("createRoom"); }}
-                      className="rounded p-0.5 text-text-muted opacity-0 hover:text-text-primary group-hover:opacity-100 cursor-pointer"
-                      title="Create channel"
-                    >
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M12 5v14M5 12h14" />
-                      </svg>
+                    <span onClick={(e) => { e.stopPropagation(); openModal("createRoom"); }} className="rounded p-0.5 text-text-muted opacity-0 hover:text-text-primary group-hover:opacity-100 cursor-pointer" title="Create channel">
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
                     </span>
-                    {/* Delete category */}
-                    <span
-                      onClick={(e) => { e.stopPropagation(); handleDeleteCategory(cat.id); }}
-                      className="rounded p-0.5 text-text-muted opacity-0 hover:text-red group-hover:opacity-100 cursor-pointer"
-                      title="Delete section"
-                    >
-                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M18 6L6 18M6 6l12 12" />
-                      </svg>
+                    <span onClick={(e) => { e.stopPropagation(); handleDeleteCategory(cat.id); }} className="rounded p-0.5 text-text-muted opacity-0 hover:text-red group-hover:opacity-100 cursor-pointer" title="Delete section">
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
                     </span>
                   </div>
                   {!isCollapsed && (
                     <div>
                       {catChannels.length === 0 ? (
-                        <p className="px-3 py-1 text-xs text-text-muted italic">No channels</p>
+                        <p className="px-3 py-1 text-xs text-text-muted italic">Drag channels here</p>
                       ) : (
                         catChannels.map((ch, i) => (
-                          <div
-                            key={ch.roomId}
-                            className="relative"
-                            draggable={canReorder}
+                          <div key={ch.roomId} className="relative" draggable={canReorder}
                             onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, cat.id) : undefined}
                             onDragOver={canReorder ? (e) => handleItemDragOver(e, cat.id, i) : undefined}
                             onDrop={canReorder ? (e) => handleDrop(e, cat.id) : undefined}
@@ -441,14 +446,7 @@ export function ChannelSidebar() {
                               <div className="absolute left-1 right-1 top-0 z-10 h-0.5 rounded bg-accent" />
                             )}
                             <div className={`${canReorder ? "cursor-grab active:cursor-grabbing" : ""} ${draggingId === ch.roomId ? "opacity-40" : ""}`}>
-                              <ChannelItem
-                                roomId={ch.roomId}
-                                name={ch.name}
-                                channelType={ch.channelType}
-                                unreadCount={ch.unreadCount}
-                                isSelected={selectedRoomId === ch.roomId}
-                                onClick={() => selectRoom(ch.roomId)}
-                              />
+                              <ChannelItem roomId={ch.roomId} name={ch.name} channelType={ch.channelType} unreadCount={ch.unreadCount} isSelected={selectedRoomId === ch.roomId} onClick={() => selectRoom(ch.roomId)} />
                             </div>
                             {canReorder && dragOverTarget?.catId === cat.id && dragOverTarget.index === i + 1 && i === catChannels.length - 1 && draggingId !== ch.roomId && (
                               <div className="absolute bottom-0 left-1 right-1 z-10 h-0.5 rounded bg-accent" />
@@ -462,102 +460,67 @@ export function ChannelSidebar() {
               );
             })}
 
-            {/* Uncategorized channels */}
-            {uncategorizedChannels.length > 0 && (
-              <div className="mb-1">
-                <button
-                  onClick={() => toggleSection("__uncategorized")}
-                  className="group flex w-full items-center gap-0.5 px-1 py-1.5"
-                >
-                  <svg
-                    className={`h-3 w-3 text-text-muted transition-transform ${
-                      collapsedSections["__uncategorized"] ? "-rotate-90" : ""
-                    }`}
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                  >
-                    <path d="M7 10l5 5 5-5z" />
-                  </svg>
-                  <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary">
-                    Channels
-                  </span>
-                  <span
-                    onClick={(e) => { e.stopPropagation(); openModal("createRoom"); }}
-                    className="rounded p-0.5 text-text-muted opacity-0 hover:text-text-primary group-hover:opacity-100 cursor-pointer"
-                    title="Create channel"
-                  >
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
-                  </span>
-                </button>
-                {!collapsedSections["__uncategorized"] && (
-                  <div>
-                    {uncategorizedChannels.map((ch, i) => (
-                      <div
-                        key={ch.roomId}
-                        className="relative"
-                        draggable={canReorder}
-                        onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, "__uncategorized") : undefined}
-                        onDragOver={canReorder ? (e) => handleItemDragOver(e, "__uncategorized", i) : undefined}
-                        onDrop={canReorder ? (e) => handleDrop(e, "__uncategorized") : undefined}
+            {/* Default Voice Channels section */}
+            <div className="mb-1">
+              <button
+                onClick={() => toggleSection("__voice")}
+                className="group flex w-full items-center gap-0.5 px-1 py-1.5"
+              >
+                <svg className={`h-3 w-3 text-text-muted transition-transform ${collapsedSections["__voice"] ? "-rotate-90" : ""}`} viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M7 10l5 5 5-5z" />
+                </svg>
+                <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary">
+                  Voice Channels
+                </span>
+                <span onClick={(e) => { e.stopPropagation(); openModal("createRoom"); }} className="rounded p-0.5 text-text-muted opacity-0 hover:text-text-primary group-hover:opacity-100 cursor-pointer" title="Create channel">
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
+                </span>
+              </button>
+              {!collapsedSections["__voice"] && (
+                <div>
+                  {defaultVoiceChannels.length === 0 ? (
+                    <p className="px-3 py-1 text-xs text-text-muted">No voice channels</p>
+                  ) : (
+                    defaultVoiceChannels.map((ch, i) => (
+                      <div key={ch.roomId} className="relative" draggable={canReorder}
+                        onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, "__voice") : undefined}
+                        onDragOver={canReorder ? (e) => handleItemDragOver(e, "__voice", i) : undefined}
+                        onDrop={canReorder ? (e) => handleDrop(e, "__voice") : undefined}
                         onDragEnd={canReorder ? handleDragEnd : undefined}
                       >
-                        {canReorder && dragOverTarget?.catId === "__uncategorized" && dragOverTarget.index === i && draggingId !== ch.roomId && (
+                        {canReorder && dragOverTarget?.catId === "__voice" && dragOverTarget.index === i && draggingId !== ch.roomId && (
                           <div className="absolute left-1 right-1 top-0 z-10 h-0.5 rounded bg-accent" />
                         )}
                         <div className={`${canReorder ? "cursor-grab active:cursor-grabbing" : ""} ${draggingId === ch.roomId ? "opacity-40" : ""}`}>
-                          <ChannelItem
-                            roomId={ch.roomId}
-                            name={ch.name}
-                            channelType={ch.channelType}
-                            unreadCount={ch.unreadCount}
-                            isSelected={selectedRoomId === ch.roomId}
-                            onClick={() => selectRoom(ch.roomId)}
-                          />
+                          <ChannelItem roomId={ch.roomId} name={ch.name} channelType={ch.channelType} unreadCount={ch.unreadCount} isSelected={selectedRoomId === ch.roomId} onClick={() => selectRoom(ch.roomId)} />
                         </div>
-                        {canReorder && dragOverTarget?.catId === "__uncategorized" && dragOverTarget.index === i + 1 && i === uncategorizedChannels.length - 1 && draggingId !== ch.roomId && (
+                        {canReorder && dragOverTarget?.catId === "__voice" && dragOverTarget.index === i + 1 && i === defaultVoiceChannels.length - 1 && draggingId !== ch.roomId && (
                           <div className="absolute bottom-0 left-1 right-1 z-10 h-0.5 rounded bg-accent" />
                         )}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
 
-            {/* Create Category button / inline form */}
+            {/* Create Section button */}
             {canReorder && (
               <div className="mt-1 px-1">
                 {creatingCategory ? (
                   <div className="flex items-center gap-1">
-                    <input
-                      autoFocus
-                      value={newCatName}
-                      onChange={(e) => setNewCatName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleCreateCategory();
-                        if (e.key === "Escape") { setCreatingCategory(false); setNewCatName(""); }
-                      }}
+                    <input autoFocus value={newCatName} onChange={(e) => setNewCatName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleCreateCategory(); if (e.key === "Escape") { setCreatingCategory(false); setNewCatName(""); } }}
                       placeholder="Section name"
                       className="w-full rounded-sm bg-bg-input px-2 py-1 text-xs text-text-primary outline-none focus:ring-1 focus:ring-accent"
                     />
-                    <button
-                      onClick={handleCreateCategory}
-                      disabled={!newCatName.trim()}
-                      className="rounded-sm bg-accent px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
-                    >
+                    <button onClick={handleCreateCategory} disabled={!newCatName.trim()} className="rounded-sm bg-accent px-2 py-1 text-xs font-medium text-white disabled:opacity-50">
                       Add
                     </button>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => setCreatingCategory(true)}
-                    className="flex w-full items-center gap-1 rounded-sm px-1 py-1 text-[11px] text-text-muted hover:text-text-secondary"
-                  >
-                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
+                  <button onClick={() => setCreatingCategory(true)} className="flex w-full items-center gap-1 rounded-sm px-1 py-1 text-[11px] text-text-muted hover:text-text-secondary">
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
                     Create Section
                   </button>
                 )}

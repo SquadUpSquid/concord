@@ -2,6 +2,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { CreateRoomModal } from "./CreateRoomModal";
 import { CreateSpaceModal } from "./CreateSpaceModal";
 import { RoomSettingsModal } from "./RoomSettingsModal";
+import { SpaceSettingsModal } from "./SpaceSettingsModal";
 import { LeaveRoomModal } from "./LeaveRoomModal";
 import { CreateDmModal } from "./CreateDmModal";
 import { UserSettingsModal } from "./UserSettingsModal";
@@ -17,6 +18,8 @@ export function ModalRoot() {
       return <CreateSpaceModal />;
     case "roomSettings":
       return <RoomSettingsModal />;
+    case "spaceSettings":
+      return <SpaceSettingsModal />;
     case "leaveRoom":
       return <LeaveRoomModal />;
     case "createDm":

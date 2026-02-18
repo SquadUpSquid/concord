@@ -2,6 +2,7 @@ import { useRoomStore } from "@/stores/roomStore";
 import { useUiStore } from "@/stores/uiStore";
 import { ServerIcon } from "./ServerIcon";
 import { useMemo } from "react";
+import { SpaceContextMenu } from "./SpaceContextMenu";
 
 export function ServerSidebar() {
   const rooms = useRoomStore((s) => s.rooms);
@@ -10,6 +11,7 @@ export function ServerSidebar() {
   const openModal = useUiStore((s) => s.openModal);
 
   const spaces = Array.from(rooms.values()).filter((r) => r.isSpace);
+  const openSpaceContextMenu = useUiStore((s) => s.openSpaceContextMenu);
 
   // Aggregate unread counts: for each space, sum unreads of its child rooms
   // For "home" (null space), sum unreads of rooms with no parent
@@ -70,14 +72,21 @@ export function ServerSidebar() {
       <div className="mx-auto h-px w-8 bg-bg-active" />
 
       {spaces.map((space) => (
-        <ServerIcon
+        <div
           key={space.roomId}
-          name={space.name}
-          avatarUrl={space.avatarUrl}
-          isSelected={selectedSpaceId === space.roomId}
-          unreadCount={unreadCounts.get(space.roomId) ?? 0}
-          onClick={() => selectSpace(space.roomId)}
-        />
+          onContextMenu={(e) => {
+            e.preventDefault();
+            openSpaceContextMenu(space.roomId, e.clientX, e.clientY);
+          }}
+        >
+          <ServerIcon
+            name={space.name}
+            avatarUrl={space.avatarUrl}
+            isSelected={selectedSpaceId === space.roomId}
+            unreadCount={unreadCounts.get(space.roomId) ?? 0}
+            onClick={() => selectSpace(space.roomId)}
+          />
+        </div>
       ))}
 
       {/* Create space button */}
@@ -91,6 +100,8 @@ export function ServerSidebar() {
           <path d="M12 5v14M5 12h14" />
         </svg>
       </button>
+
+      <SpaceContextMenu />
     </div>
   );
 }

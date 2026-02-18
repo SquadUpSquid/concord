@@ -4,6 +4,7 @@ export type ModalType =
   | "createRoom"
   | "createSpace"
   | "roomSettings"
+  | "spaceSettings"
   | "leaveRoom"
   | "createDm"
   | "userSettings"
@@ -21,6 +22,10 @@ interface UiState {
   contextMenu: { roomId: string; x: number; y: number } | null;
   openContextMenu: (roomId: string, x: number, y: number) => void;
   closeContextMenu: () => void;
+
+  spaceContextMenu: { spaceId: string; x: number; y: number } | null;
+  openSpaceContextMenu: (spaceId: string, x: number, y: number) => void;
+  closeSpaceContextMenu: () => void;
 }
 
 export const useUiStore = create<UiState>()((set, get) => ({
@@ -34,4 +39,8 @@ export const useUiStore = create<UiState>()((set, get) => ({
   contextMenu: null,
   openContextMenu: (roomId, x, y) => set({ contextMenu: { roomId, x, y } }),
   closeContextMenu: () => set({ contextMenu: null }),
+
+  spaceContextMenu: null,
+  openSpaceContextMenu: (spaceId, x, y) => set({ spaceContextMenu: { spaceId, x, y } }),
+  closeSpaceContextMenu: () => set({ spaceContextMenu: null }),
 }));

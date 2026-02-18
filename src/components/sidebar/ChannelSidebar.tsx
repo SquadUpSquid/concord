@@ -5,6 +5,7 @@ import { useChannelOrderStore, sortChannelsByOrder } from "@/stores/channelOrder
 import { useChannelPrefsStore } from "@/stores/channelPrefsStore";
 import type { ChannelListType } from "@/stores/channelOrderStore";
 import { ChannelItem } from "./ChannelItem";
+import { DmItem } from "./DmItem";
 import { InviteItem } from "./InviteItem";
 import { useAuthStore } from "@/stores/authStore";
 import { usePresenceStore } from "@/stores/presenceStore";
@@ -25,6 +26,7 @@ export function ChannelSidebar() {
 
   const [textCollapsed, setTextCollapsed] = useState(false);
   const [voiceCollapsed, setVoiceCollapsed] = useState(false);
+  const [orphanCollapsed, setOrphanCollapsed] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState<{ type: ChannelListType; index: number } | null>(null);
 
   const getOrder = useChannelOrderStore((s) => s.getOrder);
@@ -42,10 +44,12 @@ export function ChannelSidebar() {
     (r) => r.membership === "invite"
   );
 
+  const isHomeView = selectedSpaceId === null;
+
   const channels = Array.from(rooms.values()).filter((r) => {
     if (r.isSpace) return false;
     if (r.membership !== "join") return false;
-    if (selectedSpaceId === null) return r.parentSpaceId === null;
+    if (isHomeView) return r.parentSpaceId === null;
     if (r.parentSpaceId !== selectedSpaceId) return false;
     const required = r.minPowerLevelToView ?? 0;
     if (required > 0) {
@@ -55,9 +59,23 @@ export function ChannelSidebar() {
     return true;
   });
 
-  // Separate favorite channels
-  const favoriteChannels = channels.filter((ch) => channelPrefs[ch.roomId]?.isFavorite);
-  const nonFavoriteChannels = channels.filter((ch) => !channelPrefs[ch.roomId]?.isFavorite);
+  // Home view: separate DMs from orphan channels
+  const dmChannels = isHomeView
+    ? channels
+        .filter((ch) => ch.isDm)
+        .sort((a, b) => b.lastMessageTs - a.lastMessageTs)
+    : [];
+  const orphanChannels = isHomeView
+    ? channels.filter((ch) => !ch.isDm)
+    : [];
+
+  // Separate favorite channels (only used in space view)
+  const favoriteChannels = isHomeView
+    ? []
+    : channels.filter((ch) => channelPrefs[ch.roomId]?.isFavorite);
+  const nonFavoriteChannels = isHomeView
+    ? []
+    : channels.filter((ch) => !channelPrefs[ch.roomId]?.isFavorite);
 
   const textChannelsRaw = nonFavoriteChannels.filter((ch) => ch.channelType === "text");
   const voiceChannelsRaw = nonFavoriteChannels.filter((ch) => ch.channelType === "voice");
@@ -165,182 +183,173 @@ export function ChannelSidebar() {
           </div>
         )}
 
-        {channels.length === 0 && pendingInvites.length === 0 && (
-          <p className="px-2 py-4 text-center text-xs text-text-muted">
-            No channels
-          </p>
-        )}
+        {/* ──── HOME VIEW (DMs + orphan channels) ──── */}
+        {isHomeView && (
+          <>
+            {dmChannels.length === 0 && orphanChannels.length === 0 && pendingInvites.length === 0 && (
+              <p className="px-2 py-4 text-center text-xs text-text-muted">
+                No conversations yet
+              </p>
+            )}
 
-        {/* Favorites Section */}
-        {favoriteChannels.length > 0 && (
-          <div className="mb-1">
-            <button
-              onClick={() => setFavoritesCollapsed(!favoritesCollapsed)}
-              className="group flex w-full items-center gap-0.5 px-1 py-1.5"
-            >
-              <svg
-                className={`h-3 w-3 text-text-muted transition-transform ${
-                  favoritesCollapsed ? "-rotate-90" : ""
-                }`}
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M7 10l5 5 5-5z" />
-              </svg>
-              <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-yellow group-hover:text-yellow/80">
-                Favorites — {favoriteChannels.length}
-              </span>
-            </button>
-            {!favoritesCollapsed &&
-              favoriteChannels.map((ch) => (
-                <ChannelItem
-                  key={ch.roomId}
-                  roomId={ch.roomId}
-                  name={ch.name}
-                  channelType={ch.channelType}
-                  unreadCount={ch.unreadCount}
-                  isSelected={selectedRoomId === ch.roomId}
-                  onClick={() => selectRoom(ch.roomId)}
-                />
-              ))}
-          </div>
-        )}
-
-        {/* Text Channels Section */}
-        {(textChannels.length > 0 || channels.length > 0) && (
-          <div className="mb-1">
-            <button
-              onClick={() => setTextCollapsed(!textCollapsed)}
-              className="group flex w-full items-center gap-0.5 px-1 py-1.5"
-            >
-              <svg
-                className={`h-3 w-3 text-text-muted transition-transform ${
-                  textCollapsed ? "-rotate-90" : ""
-                }`}
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M7 10l5 5 5-5z" />
-              </svg>
-              <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary">
-                Text Channels
-              </span>
-              <span
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openModal("createRoom");
-                }}
-                className="rounded p-0.5 text-text-muted opacity-0 hover:text-text-primary group-hover:opacity-100"
-                title="Create channel"
-              >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" strokeWidth="2">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </span>
-            </button>
-            {!textCollapsed && (
-              <div>
-                {canReorder && textChannels.length > 0 && (
-                  <div
-                    onDragOver={(e) => handleDragOver(e, "text", 0)}
-                    onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, "text", 0)}
-                    className={`min-h-[6px] transition-colors ${dragOverIndex?.type === "text" && dragOverIndex?.index === 0 ? "bg-accent/30" : "bg-transparent"}`}
-                  />
-                )}
-                {textChannels.map((ch, i) => (
-                  <span key={ch.roomId} className="block">
-                    {canReorder && (
-                      <div
-                        onDragOver={(e) => handleDragOver(e, "text", i + 1)}
-                        onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDrop(e, "text", i + 1)}
-                        className={`min-h-[6px] transition-colors ${dragOverIndex?.type === "text" && dragOverIndex?.index === i + 1 ? "bg-accent/30" : "bg-transparent"}`}
-                      />
-                    )}
-                    <div
-                      draggable={canReorder}
-                      onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, "text") : undefined}
-                      onDragEnd={canReorder ? handleDragEnd : undefined}
-                      className={canReorder ? "cursor-grab active:cursor-grabbing" : ""}
-                    >
-                      <ChannelItem
-                        roomId={ch.roomId}
-                        name={ch.name}
-                        channelType={ch.channelType}
-                        unreadCount={ch.unreadCount}
-                        isSelected={selectedRoomId === ch.roomId}
-                        onClick={() => selectRoom(ch.roomId)}
-                      />
-                    </div>
+            {/* Direct Messages list */}
+            {dmChannels.length > 0 && (
+              <div className="mb-1">
+                <div className="px-1 py-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                    Direct Messages — {dmChannels.length}
                   </span>
+                </div>
+                {dmChannels.map((ch) => (
+                  <DmItem
+                    key={ch.roomId}
+                    roomId={ch.roomId}
+                    name={ch.name}
+                    unreadCount={ch.unreadCount}
+                    isSelected={selectedRoomId === ch.roomId}
+                    onClick={() => selectRoom(ch.roomId)}
+                  />
                 ))}
               </div>
             )}
-          </div>
+
+            {/* Orphan channels (not DMs, no parent space) */}
+            {orphanChannels.length > 0 && (
+              <div className="mb-1">
+                <button
+                  onClick={() => setOrphanCollapsed(!orphanCollapsed)}
+                  className="group flex w-full items-center gap-0.5 px-1 py-1.5"
+                >
+                  <svg
+                    className={`h-3 w-3 text-text-muted transition-transform ${
+                      orphanCollapsed ? "-rotate-90" : ""
+                    }`}
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M7 10l5 5 5-5z" />
+                  </svg>
+                  <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary">
+                    Channels — {orphanChannels.length}
+                  </span>
+                </button>
+                {!orphanCollapsed &&
+                  orphanChannels.map((ch) => (
+                    <ChannelItem
+                      key={ch.roomId}
+                      roomId={ch.roomId}
+                      name={ch.name}
+                      channelType={ch.channelType}
+                      unreadCount={ch.unreadCount}
+                      isSelected={selectedRoomId === ch.roomId}
+                      onClick={() => selectRoom(ch.roomId)}
+                    />
+                  ))}
+              </div>
+            )}
+          </>
         )}
 
-        {/* Voice Channels Section — only show when a space is selected, not in overview */}
-        {selectedSpaceId !== null && (voiceChannels.length > 0 || channels.length > 0) && (
-          <div className="mb-1">
-            <button
-              onClick={() => setVoiceCollapsed(!voiceCollapsed)}
-              className="group flex w-full items-center gap-0.5 px-1 py-1.5"
-            >
-              <svg
-                className={`h-3 w-3 text-text-muted transition-transform ${
-                  voiceCollapsed ? "-rotate-90" : ""
-                }`}
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M7 10l5 5 5-5z" />
-              </svg>
-              <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary">
-                Voice Channels
-              </span>
-              <span
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openModal("createRoom");
-                }}
-                className="rounded p-0.5 text-text-muted opacity-0 hover:text-text-primary group-hover:opacity-100"
-                title="Create channel"
-              >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" strokeWidth="2">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </span>
-            </button>
-            {!voiceCollapsed && (
-              <div>
-                {voiceChannels.length === 0 ? (
-                  <p className="px-3 py-1 text-xs text-text-muted">No voice channels</p>
-                ) : (
-                  <>
-                    {canReorder && (
+        {/* ──── SPACE VIEW (favorites, text channels, voice channels) ──── */}
+        {!isHomeView && (
+          <>
+            {channels.length === 0 && pendingInvites.length === 0 && (
+              <p className="px-2 py-4 text-center text-xs text-text-muted">
+                No channels
+              </p>
+            )}
+
+            {/* Favorites Section */}
+            {favoriteChannels.length > 0 && (
+              <div className="mb-1">
+                <button
+                  onClick={() => setFavoritesCollapsed(!favoritesCollapsed)}
+                  className="group flex w-full items-center gap-0.5 px-1 py-1.5"
+                >
+                  <svg
+                    className={`h-3 w-3 text-text-muted transition-transform ${
+                      favoritesCollapsed ? "-rotate-90" : ""
+                    }`}
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M7 10l5 5 5-5z" />
+                  </svg>
+                  <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-yellow group-hover:text-yellow/80">
+                    Favorites — {favoriteChannels.length}
+                  </span>
+                </button>
+                {!favoritesCollapsed &&
+                  favoriteChannels.map((ch) => (
+                    <ChannelItem
+                      key={ch.roomId}
+                      roomId={ch.roomId}
+                      name={ch.name}
+                      channelType={ch.channelType}
+                      unreadCount={ch.unreadCount}
+                      isSelected={selectedRoomId === ch.roomId}
+                      onClick={() => selectRoom(ch.roomId)}
+                    />
+                  ))}
+              </div>
+            )}
+
+            {/* Text Channels Section */}
+            {(textChannels.length > 0 || channels.length > 0) && (
+              <div className="mb-1">
+                <button
+                  onClick={() => setTextCollapsed(!textCollapsed)}
+                  className="group flex w-full items-center gap-0.5 px-1 py-1.5"
+                >
+                  <svg
+                    className={`h-3 w-3 text-text-muted transition-transform ${
+                      textCollapsed ? "-rotate-90" : ""
+                    }`}
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M7 10l5 5 5-5z" />
+                  </svg>
+                  <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary">
+                    Text Channels
+                  </span>
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openModal("createRoom");
+                    }}
+                    className="rounded p-0.5 text-text-muted opacity-0 hover:text-text-primary group-hover:opacity-100"
+                    title="Create channel"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" strokeWidth="2">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                  </span>
+                </button>
+                {!textCollapsed && (
+                  <div>
+                    {canReorder && textChannels.length > 0 && (
                       <div
-                        onDragOver={(e) => handleDragOver(e, "voice", 0)}
+                        onDragOver={(e) => handleDragOver(e, "text", 0)}
                         onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDrop(e, "voice", 0)}
-                        className={`min-h-[6px] transition-colors ${dragOverIndex?.type === "voice" && dragOverIndex?.index === 0 ? "bg-accent/30" : "bg-transparent"}`}
+                        onDrop={(e) => handleDrop(e, "text", 0)}
+                        className={`min-h-[6px] transition-colors ${dragOverIndex?.type === "text" && dragOverIndex?.index === 0 ? "bg-accent/30" : "bg-transparent"}`}
                       />
                     )}
-                    {voiceChannels.map((ch, i) => (
+                    {textChannels.map((ch, i) => (
                       <span key={ch.roomId} className="block">
                         {canReorder && (
                           <div
-                            onDragOver={(e) => handleDragOver(e, "voice", i + 1)}
+                            onDragOver={(e) => handleDragOver(e, "text", i + 1)}
                             onDragLeave={handleDragLeave}
-                            onDrop={(e) => handleDrop(e, "voice", i + 1)}
-                            className={`min-h-[6px] transition-colors ${dragOverIndex?.type === "voice" && dragOverIndex?.index === i + 1 ? "bg-accent/30" : "bg-transparent"}`}
+                            onDrop={(e) => handleDrop(e, "text", i + 1)}
+                            className={`min-h-[6px] transition-colors ${dragOverIndex?.type === "text" && dragOverIndex?.index === i + 1 ? "bg-accent/30" : "bg-transparent"}`}
                           />
                         )}
                         <div
                           draggable={canReorder}
-                          onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, "voice") : undefined}
+                          onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, "text") : undefined}
                           onDragEnd={canReorder ? handleDragEnd : undefined}
                           className={canReorder ? "cursor-grab active:cursor-grabbing" : ""}
                         >
@@ -355,11 +364,92 @@ export function ChannelSidebar() {
                         </div>
                       </span>
                     ))}
-                  </>
+                  </div>
                 )}
               </div>
             )}
-          </div>
+
+            {/* Voice Channels Section */}
+            {(voiceChannels.length > 0 || channels.length > 0) && (
+              <div className="mb-1">
+                <button
+                  onClick={() => setVoiceCollapsed(!voiceCollapsed)}
+                  className="group flex w-full items-center gap-0.5 px-1 py-1.5"
+                >
+                  <svg
+                    className={`h-3 w-3 text-text-muted transition-transform ${
+                      voiceCollapsed ? "-rotate-90" : ""
+                    }`}
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M7 10l5 5 5-5z" />
+                  </svg>
+                  <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary">
+                    Voice Channels
+                  </span>
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openModal("createRoom");
+                    }}
+                    className="rounded p-0.5 text-text-muted opacity-0 hover:text-text-primary group-hover:opacity-100"
+                    title="Create channel"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" strokeWidth="2">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                  </span>
+                </button>
+                {!voiceCollapsed && (
+                  <div>
+                    {voiceChannels.length === 0 ? (
+                      <p className="px-3 py-1 text-xs text-text-muted">No voice channels</p>
+                    ) : (
+                      <>
+                        {canReorder && (
+                          <div
+                            onDragOver={(e) => handleDragOver(e, "voice", 0)}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, "voice", 0)}
+                            className={`min-h-[6px] transition-colors ${dragOverIndex?.type === "voice" && dragOverIndex?.index === 0 ? "bg-accent/30" : "bg-transparent"}`}
+                          />
+                        )}
+                        {voiceChannels.map((ch, i) => (
+                          <span key={ch.roomId} className="block">
+                            {canReorder && (
+                              <div
+                                onDragOver={(e) => handleDragOver(e, "voice", i + 1)}
+                                onDragLeave={handleDragLeave}
+                                onDrop={(e) => handleDrop(e, "voice", i + 1)}
+                                className={`min-h-[6px] transition-colors ${dragOverIndex?.type === "voice" && dragOverIndex?.index === i + 1 ? "bg-accent/30" : "bg-transparent"}`}
+                              />
+                            )}
+                            <div
+                              draggable={canReorder}
+                              onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, "voice") : undefined}
+                              onDragEnd={canReorder ? handleDragEnd : undefined}
+                              className={canReorder ? "cursor-grab active:cursor-grabbing" : ""}
+                            >
+                              <ChannelItem
+                                roomId={ch.roomId}
+                                name={ch.name}
+                                channelType={ch.channelType}
+                                unreadCount={ch.unreadCount}
+                                isSelected={selectedRoomId === ch.roomId}
+                                onClick={() => selectRoom(ch.roomId)}
+                              />
+                            </div>
+                          </span>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
 

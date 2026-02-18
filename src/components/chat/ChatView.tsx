@@ -19,6 +19,7 @@ export function ChatView() {
   const roomName = room?.name ?? "Unknown";
   const roomTopic = room?.topic ?? null;
   const isVoiceChannel = room?.channelType === "voice";
+  const isDm = room?.isDm ?? false;
 
   useEffect(() => {
     const client = getMatrixClient();
@@ -54,6 +55,8 @@ export function ChatView() {
           <ChatHeader
             name={roomName}
             topic={roomTopic}
+            isDm={isDm}
+            roomId={selectedRoomId}
           />
           <MessageList roomId={selectedRoomId} />
           <TypingIndicator roomId={selectedRoomId} />

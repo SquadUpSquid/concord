@@ -6,6 +6,7 @@ import { useMemberStore, Member } from "@/stores/memberStore";
 import { useTypingStore } from "@/stores/typingStore";
 import { usePresenceStore, PresenceStatus } from "@/stores/presenceStore";
 import { useCallStore, CallParticipant } from "@/stores/callStore";
+import { useCategoryStore } from "@/stores/categoryStore";
 import { mxcToHttp } from "@/utils/matrixHelpers";
 
 function mapEventToMessage(event: MatrixEvent, client: MatrixClient): Message {
@@ -455,6 +456,14 @@ export function registerEventHandlers(client: MatrixClient): void {
       }
     }
 
+    // Channel categories changed
+    if (event.getType() === "org.concord.space.categories") {
+      const content = event.getContent();
+      if (Array.isArray(content?.categories)) {
+        useCategoryStore.getState().setCategories(roomId, content.categories);
+      }
+    }
+
     // Voice channel participant tracking via m.call.member state events
     if (event.getType() === "org.matrix.msc3401.call.member" ||
         event.getType() === "m.call.member") {
@@ -462,11 +471,20 @@ export function registerEventHandlers(client: MatrixClient): void {
     }
   });
 
-  // Initial scan of all rooms for voice participants after sync
+  // Initial scan of all rooms for voice participants and categories after sync
   client.once(ClientEvent.Sync, () => {
     const rooms = client.getRooms();
     for (const room of rooms) {
       scanVoiceParticipants(client, room.roomId);
+      if (room.isSpaceRoom()) {
+        const catEvent = room.currentState.getStateEvents("org.concord.space.categories", "");
+        if (catEvent) {
+          const content = catEvent.getContent();
+          if (Array.isArray(content?.categories)) {
+            useCategoryStore.getState().setCategories(room.roomId, content.categories);
+          }
+        }
+      }
     }
   });
 }

@@ -1,9 +1,8 @@
-import { useState } from "react";
-import { useRoomStore } from "@/stores/roomStore";
+import { useState, useCallback } from "react";
+import { useRoomStore, RoomSummary } from "@/stores/roomStore";
 import { useUiStore } from "@/stores/uiStore";
-import { useChannelOrderStore, sortChannelsByOrder } from "@/stores/channelOrderStore";
 import { useChannelPrefsStore } from "@/stores/channelPrefsStore";
-import type { ChannelListType } from "@/stores/channelOrderStore";
+import { useCategoryStore, generateCategoryId, Category } from "@/stores/categoryStore";
 import { ChannelItem } from "./ChannelItem";
 import { DmItem } from "./DmItem";
 import { InviteItem } from "./InviteItem";
@@ -24,22 +23,27 @@ export function ChannelSidebar() {
   const userId = useAuthStore((s) => s.userId);
   const openModal = useUiStore((s) => s.openModal);
 
-  const [textCollapsed, setTextCollapsed] = useState(false);
-  const [voiceCollapsed, setVoiceCollapsed] = useState(false);
   const [orphanCollapsed, setOrphanCollapsed] = useState(false);
-  const [dragOverIndex, setDragOverIndex] = useState<{ type: ChannelListType; index: number } | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [dragOverTarget, setDragOverTarget] = useState<{ catId: string; index: number } | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
-  const getOrder = useChannelOrderStore((s) => s.getOrder);
-  const reorderChannel = useChannelOrderStore((s) => s.reorderChannel);
   const channelPrefs = useChannelPrefsStore((s) => s.prefs);
+  const categories = useCategoryStore((s) => selectedSpaceId ? s.getCategories(selectedSpaceId) : []);
+  const saveCategories = useCategoryStore((s) => s.saveCategories);
 
   const [favoritesCollapsed, setFavoritesCollapsed] = useState(false);
+
+  // Category create/rename state
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+  const [renamingCatId, setRenamingCatId] = useState<string | null>(null);
+  const [renameCatName, setRenameCatName] = useState("");
 
   const myPresence = usePresenceStore(
     (s) => s.presenceByUser.get(userId ?? "")?.presence ?? "online"
   );
 
-  // Pending invites (shown globally, not per-space)
   const pendingInvites = Array.from(rooms.values()).filter(
     (r) => r.membership === "invite"
   );
@@ -69,63 +73,119 @@ export function ChannelSidebar() {
     ? channels.filter((ch) => !ch.isDm)
     : [];
 
-  // Separate favorite channels (only used in space view)
+  // Space view: group channels by category
   const favoriteChannels = isHomeView
     ? []
     : channels.filter((ch) => channelPrefs[ch.roomId]?.isFavorite);
-  const nonFavoriteChannels = isHomeView
+
+  // Build channel lookup for quick access
+  const channelMap = new Map(channels.map((ch) => [ch.roomId, ch]));
+
+  // Channels assigned to a category (resolved from category channelIds)
+  const assignedChannelIds = new Set(categories.flatMap((c) => c.channelIds));
+
+  // Uncategorized channels (in space, not favorites, not assigned to any category)
+  const uncategorizedChannels = isHomeView
     ? []
-    : channels.filter((ch) => !channelPrefs[ch.roomId]?.isFavorite);
-
-  const textChannelsRaw = nonFavoriteChannels.filter((ch) => ch.channelType === "text");
-  const voiceChannelsRaw = nonFavoriteChannels.filter((ch) => ch.channelType === "voice");
-
-  const textOrder = selectedSpaceId ? getOrder(selectedSpaceId, "text") : [];
-  const voiceOrder = selectedSpaceId ? getOrder(selectedSpaceId, "voice") : [];
-  const textChannels = sortChannelsByOrder(textChannelsRaw, textOrder);
-  const voiceChannels = sortChannelsByOrder(voiceChannelsRaw, voiceOrder);
+    : channels.filter(
+        (ch) => !channelPrefs[ch.roomId]?.isFavorite && !assignedChannelIds.has(ch.roomId)
+      );
 
   const canReorder = selectedSpaceId !== null;
-  const [draggingId, setDraggingId] = useState<string | null>(null);
 
-  function handleDragStart(e: React.DragEvent, roomId: string, type: ChannelListType) {
-    e.dataTransfer.setData(CHANNEL_DND_TYPE, JSON.stringify({ roomId, type }));
+  // Resolve channels for a given category, preserving order
+  const getCategoryChannels = useCallback(
+    (cat: Category): RoomSummary[] =>
+      cat.channelIds
+        .map((id) => channelMap.get(id))
+        .filter((ch): ch is RoomSummary => !!ch && !channelPrefs[ch.roomId]?.isFavorite),
+    [channelMap, channelPrefs]
+  );
+
+  const toggleSection = (id: string) =>
+    setCollapsedSections((s) => ({ ...s, [id]: !s[id] }));
+
+  // ── Drag-and-drop within a category ──
+  function handleDragStart(e: React.DragEvent, roomId: string, catId: string) {
+    e.dataTransfer.setData(CHANNEL_DND_TYPE, JSON.stringify({ roomId, catId }));
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", "");
     setDraggingId(roomId);
   }
 
-  function handleItemDragOver(e: React.DragEvent, type: ChannelListType, index: number) {
+  function handleItemDragOver(e: React.DragEvent, catId: string, index: number) {
     if (!e.dataTransfer.types.includes(CHANNEL_DND_TYPE)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
-    // Top half of element = insert before (index), bottom half = insert after (index + 1)
     const rect = e.currentTarget.getBoundingClientRect();
     const midY = rect.top + rect.height / 2;
     const insertAt = e.clientY < midY ? index : index + 1;
-    setDragOverIndex({ type, index: insertAt });
+    setDragOverTarget({ catId, index: insertAt });
   }
 
-  function handleDrop(e: React.DragEvent, type: ChannelListType) {
+  function handleDrop(e: React.DragEvent, targetCatId: string) {
     e.preventDefault();
-    const insertIndex = dragOverIndex?.index ?? 0;
-    setDragOverIndex(null);
+    const insertIndex = dragOverTarget?.index ?? 0;
+    setDragOverTarget(null);
     setDraggingId(null);
+    if (!selectedSpaceId) return;
     try {
       const raw = e.dataTransfer.getData(CHANNEL_DND_TYPE);
       if (!raw) return;
-      const { roomId, type: draggedType } = JSON.parse(raw) as { roomId: string; type: ChannelListType };
-      if (draggedType !== type || !selectedSpaceId) return;
-      const currentOrder = type === "text" ? textChannels.map((c) => c.roomId) : voiceChannels.map((c) => c.roomId);
-      reorderChannel(selectedSpaceId, type, roomId, insertIndex, currentOrder);
+      const { roomId, catId: sourceCatId } = JSON.parse(raw) as { roomId: string; catId: string };
+      const updated = categories.map((c) => ({ ...c, channelIds: [...c.channelIds] }));
+
+      // Remove from source
+      if (sourceCatId !== "__uncategorized") {
+        const src = updated.find((c) => c.id === sourceCatId);
+        if (src) src.channelIds = src.channelIds.filter((id) => id !== roomId);
+      }
+
+      // Add to target
+      if (targetCatId === "__uncategorized") {
+        // Removing from a category puts it back in uncategorized (just remove from all)
+        for (const c of updated) c.channelIds = c.channelIds.filter((id) => id !== roomId);
+      } else {
+        const tgt = updated.find((c) => c.id === targetCatId);
+        if (tgt) {
+          tgt.channelIds = tgt.channelIds.filter((id) => id !== roomId);
+          tgt.channelIds.splice(insertIndex, 0, roomId);
+        }
+      }
+      saveCategories(selectedSpaceId, updated);
     } catch {
       // ignore
     }
   }
 
   function handleDragEnd() {
-    setDragOverIndex(null);
+    setDragOverTarget(null);
     setDraggingId(null);
+  }
+
+  // ── Category CRUD ──
+  async function handleCreateCategory() {
+    if (!newCatName.trim() || !selectedSpaceId) return;
+    const newCat: Category = { id: generateCategoryId(), name: newCatName.trim(), channelIds: [] };
+    await saveCategories(selectedSpaceId, [...categories, newCat]);
+    setNewCatName("");
+    setCreatingCategory(false);
+  }
+
+  async function handleRenameCategory(catId: string) {
+    if (!renameCatName.trim() || !selectedSpaceId) return;
+    const updated = categories.map((c) =>
+      c.id === catId ? { ...c, name: renameCatName.trim() } : c
+    );
+    await saveCategories(selectedSpaceId, updated);
+    setRenamingCatId(null);
+    setRenameCatName("");
+  }
+
+  async function handleDeleteCategory(catId: string) {
+    if (!selectedSpaceId) return;
+    const updated = categories.filter((c) => c.id !== catId);
+    await saveCategories(selectedSpaceId, updated);
   }
 
   const spaceName = selectedSpaceId
@@ -255,7 +315,7 @@ export function ChannelSidebar() {
           </>
         )}
 
-        {/* ──── SPACE VIEW (favorites, text channels, voice channels) ──── */}
+        {/* ──── SPACE VIEW (favorites, categories, uncategorized) ──── */}
         {!isHomeView && (
           <>
             {channels.length === 0 && pendingInvites.length === 0 && (
@@ -299,16 +359,116 @@ export function ChannelSidebar() {
               </div>
             )}
 
-            {/* Text Channels Section */}
-            {(textChannels.length > 0 || channels.length > 0) && (
+            {/* User-created categories */}
+            {categories.map((cat) => {
+              const catChannels = getCategoryChannels(cat);
+              const isCollapsed = collapsedSections[cat.id] ?? false;
+              const isRenaming = renamingCatId === cat.id;
+
+              return (
+                <div key={cat.id} className="mb-1">
+                  <div className="group flex w-full items-center gap-0.5 px-1 py-1.5">
+                    <button onClick={() => toggleSection(cat.id)} className="flex flex-1 items-center gap-0.5">
+                      <svg
+                        className={`h-3 w-3 text-text-muted transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <path d="M7 10l5 5 5-5z" />
+                      </svg>
+                      {isRenaming ? (
+                        <input
+                          autoFocus
+                          value={renameCatName}
+                          onChange={(e) => setRenameCatName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleRenameCategory(cat.id);
+                            if (e.key === "Escape") { setRenamingCatId(null); setRenameCatName(""); }
+                          }}
+                          onBlur={() => handleRenameCategory(cat.id)}
+                          className="w-full bg-transparent text-[11px] font-semibold uppercase tracking-wide text-text-primary outline-none"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <span
+                          className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary"
+                          onDoubleClick={() => { setRenamingCatId(cat.id); setRenameCatName(cat.name); }}
+                        >
+                          {cat.name}
+                        </span>
+                      )}
+                    </button>
+                    {/* Create channel in this category */}
+                    <span
+                      onClick={(e) => { e.stopPropagation(); openModal("createRoom"); }}
+                      className="rounded p-0.5 text-text-muted opacity-0 hover:text-text-primary group-hover:opacity-100 cursor-pointer"
+                      title="Create channel"
+                    >
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
+                    </span>
+                    {/* Delete category */}
+                    <span
+                      onClick={(e) => { e.stopPropagation(); handleDeleteCategory(cat.id); }}
+                      className="rounded p-0.5 text-text-muted opacity-0 hover:text-red group-hover:opacity-100 cursor-pointer"
+                      title="Delete section"
+                    >
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M18 6L6 18M6 6l12 12" />
+                      </svg>
+                    </span>
+                  </div>
+                  {!isCollapsed && (
+                    <div>
+                      {catChannels.length === 0 ? (
+                        <p className="px-3 py-1 text-xs text-text-muted italic">No channels</p>
+                      ) : (
+                        catChannels.map((ch, i) => (
+                          <div
+                            key={ch.roomId}
+                            className="relative"
+                            draggable={canReorder}
+                            onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, cat.id) : undefined}
+                            onDragOver={canReorder ? (e) => handleItemDragOver(e, cat.id, i) : undefined}
+                            onDrop={canReorder ? (e) => handleDrop(e, cat.id) : undefined}
+                            onDragEnd={canReorder ? handleDragEnd : undefined}
+                          >
+                            {canReorder && dragOverTarget?.catId === cat.id && dragOverTarget.index === i && draggingId !== ch.roomId && (
+                              <div className="absolute left-1 right-1 top-0 z-10 h-0.5 rounded bg-accent" />
+                            )}
+                            <div className={`${canReorder ? "cursor-grab active:cursor-grabbing" : ""} ${draggingId === ch.roomId ? "opacity-40" : ""}`}>
+                              <ChannelItem
+                                roomId={ch.roomId}
+                                name={ch.name}
+                                channelType={ch.channelType}
+                                unreadCount={ch.unreadCount}
+                                isSelected={selectedRoomId === ch.roomId}
+                                onClick={() => selectRoom(ch.roomId)}
+                              />
+                            </div>
+                            {canReorder && dragOverTarget?.catId === cat.id && dragOverTarget.index === i + 1 && i === catChannels.length - 1 && draggingId !== ch.roomId && (
+                              <div className="absolute bottom-0 left-1 right-1 z-10 h-0.5 rounded bg-accent" />
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Uncategorized channels */}
+            {uncategorizedChannels.length > 0 && (
               <div className="mb-1">
                 <button
-                  onClick={() => setTextCollapsed(!textCollapsed)}
+                  onClick={() => toggleSection("__uncategorized")}
                   className="group flex w-full items-center gap-0.5 px-1 py-1.5"
                 >
                   <svg
                     className={`h-3 w-3 text-text-muted transition-transform ${
-                      textCollapsed ? "-rotate-90" : ""
+                      collapsedSections["__uncategorized"] ? "-rotate-90" : ""
                     }`}
                     viewBox="0 0 24 24"
                     fill="currentColor"
@@ -316,36 +476,31 @@ export function ChannelSidebar() {
                     <path d="M7 10l5 5 5-5z" />
                   </svg>
                   <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary">
-                    Text Channels
+                    Channels
                   </span>
                   <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openModal("createRoom");
-                    }}
-                    className="rounded p-0.5 text-text-muted opacity-0 hover:text-text-primary group-hover:opacity-100"
+                    onClick={(e) => { e.stopPropagation(); openModal("createRoom"); }}
+                    className="rounded p-0.5 text-text-muted opacity-0 hover:text-text-primary group-hover:opacity-100 cursor-pointer"
                     title="Create channel"
                   >
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none"
-                         stroke="currentColor" strokeWidth="2">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M12 5v14M5 12h14" />
                     </svg>
                   </span>
                 </button>
-                {!textCollapsed && (
+                {!collapsedSections["__uncategorized"] && (
                   <div>
-                    {textChannels.map((ch, i) => (
+                    {uncategorizedChannels.map((ch, i) => (
                       <div
                         key={ch.roomId}
                         className="relative"
                         draggable={canReorder}
-                        onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, "text") : undefined}
-                        onDragOver={canReorder ? (e) => handleItemDragOver(e, "text", i) : undefined}
-                        onDrop={canReorder ? (e) => handleDrop(e, "text") : undefined}
+                        onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, "__uncategorized") : undefined}
+                        onDragOver={canReorder ? (e) => handleItemDragOver(e, "__uncategorized", i) : undefined}
+                        onDrop={canReorder ? (e) => handleDrop(e, "__uncategorized") : undefined}
                         onDragEnd={canReorder ? handleDragEnd : undefined}
                       >
-                        {/* Drop indicator line — before this item */}
-                        {canReorder && dragOverIndex?.type === "text" && dragOverIndex.index === i && draggingId !== ch.roomId && (
+                        {canReorder && dragOverTarget?.catId === "__uncategorized" && dragOverTarget.index === i && draggingId !== ch.roomId && (
                           <div className="absolute left-1 right-1 top-0 z-10 h-0.5 rounded bg-accent" />
                         )}
                         <div className={`${canReorder ? "cursor-grab active:cursor-grabbing" : ""} ${draggingId === ch.roomId ? "opacity-40" : ""}`}>
@@ -358,8 +513,7 @@ export function ChannelSidebar() {
                             onClick={() => selectRoom(ch.roomId)}
                           />
                         </div>
-                        {/* Drop indicator line — after the last item */}
-                        {canReorder && dragOverIndex?.type === "text" && dragOverIndex.index === i + 1 && i === textChannels.length - 1 && draggingId !== ch.roomId && (
+                        {canReorder && dragOverTarget?.catId === "__uncategorized" && dragOverTarget.index === i + 1 && i === uncategorizedChannels.length - 1 && draggingId !== ch.roomId && (
                           <div className="absolute bottom-0 left-1 right-1 z-10 h-0.5 rounded bg-accent" />
                         )}
                       </div>
@@ -369,74 +523,40 @@ export function ChannelSidebar() {
               </div>
             )}
 
-            {/* Voice Channels Section */}
-            {(voiceChannels.length > 0 || channels.length > 0) && (
-              <div className="mb-1">
-                <button
-                  onClick={() => setVoiceCollapsed(!voiceCollapsed)}
-                  className="group flex w-full items-center gap-0.5 px-1 py-1.5"
-                >
-                  <svg
-                    className={`h-3 w-3 text-text-muted transition-transform ${
-                      voiceCollapsed ? "-rotate-90" : ""
-                    }`}
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
+            {/* Create Category button / inline form */}
+            {canReorder && (
+              <div className="mt-1 px-1">
+                {creatingCategory ? (
+                  <div className="flex items-center gap-1">
+                    <input
+                      autoFocus
+                      value={newCatName}
+                      onChange={(e) => setNewCatName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleCreateCategory();
+                        if (e.key === "Escape") { setCreatingCategory(false); setNewCatName(""); }
+                      }}
+                      placeholder="Section name"
+                      className="w-full rounded-sm bg-bg-input px-2 py-1 text-xs text-text-primary outline-none focus:ring-1 focus:ring-accent"
+                    />
+                    <button
+                      onClick={handleCreateCategory}
+                      disabled={!newCatName.trim()}
+                      className="rounded-sm bg-accent px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setCreatingCategory(true)}
+                    className="flex w-full items-center gap-1 rounded-sm px-1 py-1 text-[11px] text-text-muted hover:text-text-secondary"
                   >
-                    <path d="M7 10l5 5 5-5z" />
-                  </svg>
-                  <span className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary">
-                    Voice Channels
-                  </span>
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openModal("createRoom");
-                    }}
-                    className="rounded p-0.5 text-text-muted opacity-0 hover:text-text-primary group-hover:opacity-100"
-                    title="Create channel"
-                  >
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none"
-                         stroke="currentColor" strokeWidth="2">
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M12 5v14M5 12h14" />
                     </svg>
-                  </span>
-                </button>
-                {!voiceCollapsed && (
-                  <div>
-                    {voiceChannels.length === 0 ? (
-                      <p className="px-3 py-1 text-xs text-text-muted">No voice channels</p>
-                    ) : (
-                      voiceChannels.map((ch, i) => (
-                        <div
-                          key={ch.roomId}
-                          className="relative"
-                          draggable={canReorder}
-                          onDragStart={canReorder ? (e) => handleDragStart(e, ch.roomId, "voice") : undefined}
-                          onDragOver={canReorder ? (e) => handleItemDragOver(e, "voice", i) : undefined}
-                          onDrop={canReorder ? (e) => handleDrop(e, "voice") : undefined}
-                          onDragEnd={canReorder ? handleDragEnd : undefined}
-                        >
-                          {canReorder && dragOverIndex?.type === "voice" && dragOverIndex.index === i && draggingId !== ch.roomId && (
-                            <div className="absolute left-1 right-1 top-0 z-10 h-0.5 rounded bg-accent" />
-                          )}
-                          <div className={`${canReorder ? "cursor-grab active:cursor-grabbing" : ""} ${draggingId === ch.roomId ? "opacity-40" : ""}`}>
-                            <ChannelItem
-                              roomId={ch.roomId}
-                              name={ch.name}
-                              channelType={ch.channelType}
-                              unreadCount={ch.unreadCount}
-                              isSelected={selectedRoomId === ch.roomId}
-                              onClick={() => selectRoom(ch.roomId)}
-                            />
-                          </div>
-                          {canReorder && dragOverIndex?.type === "voice" && dragOverIndex.index === i + 1 && i === voiceChannels.length - 1 && draggingId !== ch.roomId && (
-                            <div className="absolute bottom-0 left-1 right-1 z-10 h-0.5 rounded bg-accent" />
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
+                    Create Section
+                  </button>
                 )}
               </div>
             )}

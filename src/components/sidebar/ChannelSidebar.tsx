@@ -131,6 +131,8 @@ export function ChannelSidebar() {
     setDragOverTarget({ catId, index: insertAt });
   }
 
+  const isDefaultSection = (id: string) => id === "__text" || id === "__voice";
+
   function handleDrop(e: React.DragEvent, targetCatId: string) {
     e.preventDefault();
     const insertIndex = dragOverTarget?.index ?? 0;
@@ -141,19 +143,24 @@ export function ChannelSidebar() {
       const raw = e.dataTransfer.getData(CHANNEL_DND_TYPE);
       if (!raw) return;
       const { roomId, catId: sourceCatId } = JSON.parse(raw) as { roomId: string; catId: string };
+
+      // Same section, same position — nothing to do
+      if (sourceCatId === targetCatId && isDefaultSection(targetCatId)) return;
+
       const updated = categories.map((c) => ({ ...c, channelIds: [...c.channelIds] }));
 
-      // Remove from source
-      if (sourceCatId !== "__uncategorized") {
+      // Remove from source custom category (default sections don't track IDs)
+      if (!isDefaultSection(sourceCatId)) {
         const src = updated.find((c) => c.id === sourceCatId);
         if (src) src.channelIds = src.channelIds.filter((id) => id !== roomId);
       }
 
       // Add to target
-      if (targetCatId === "__uncategorized") {
-        // Removing from a category puts it back in uncategorized (just remove from all)
+      if (isDefaultSection(targetCatId)) {
+        // Dropping back to a default section: remove from all custom categories
         for (const c of updated) c.channelIds = c.channelIds.filter((id) => id !== roomId);
       } else {
+        // Dropping into a custom section
         const tgt = updated.find((c) => c.id === targetCatId);
         if (tgt) {
           tgt.channelIds = tgt.channelIds.filter((id) => id !== roomId);
@@ -372,7 +379,11 @@ export function ChannelSidebar() {
               {!collapsedSections["__text"] && (
                 <div>
                   {defaultTextChannels.length === 0 ? (
-                    <p className="px-3 py-1 text-xs text-text-muted">No text channels</p>
+                    <div
+                      className={`px-3 py-2 text-xs text-text-muted ${canReorder && dragOverTarget?.catId === "__text" ? "bg-accent/10" : ""}`}
+                      onDragOver={canReorder ? (e) => { if (!e.dataTransfer.types.includes(CHANNEL_DND_TYPE)) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverTarget({ catId: "__text", index: 0 }); } : undefined}
+                      onDrop={canReorder ? (e) => handleDrop(e, "__text") : undefined}
+                    >No text channels</div>
                   ) : (
                     defaultTextChannels.map((ch, i) => (
                       <div key={ch.roomId} className="relative" draggable={canReorder}
@@ -433,7 +444,11 @@ export function ChannelSidebar() {
                   {!isCollapsed && (
                     <div>
                       {catChannels.length === 0 ? (
-                        <p className="px-3 py-1 text-xs text-text-muted italic">Drag channels here</p>
+                        <div
+                          className={`px-3 py-2 text-xs text-text-muted italic ${canReorder && dragOverTarget?.catId === cat.id ? "bg-accent/10" : ""}`}
+                          onDragOver={canReorder ? (e) => { if (!e.dataTransfer.types.includes(CHANNEL_DND_TYPE)) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverTarget({ catId: cat.id, index: 0 }); } : undefined}
+                          onDrop={canReorder ? (e) => handleDrop(e, cat.id) : undefined}
+                        >Drag channels here</div>
                       ) : (
                         catChannels.map((ch, i) => (
                           <div key={ch.roomId} className="relative" draggable={canReorder}
@@ -479,7 +494,11 @@ export function ChannelSidebar() {
               {!collapsedSections["__voice"] && (
                 <div>
                   {defaultVoiceChannels.length === 0 ? (
-                    <p className="px-3 py-1 text-xs text-text-muted">No voice channels</p>
+                    <div
+                      className={`px-3 py-2 text-xs text-text-muted ${canReorder && dragOverTarget?.catId === "__voice" ? "bg-accent/10" : ""}`}
+                      onDragOver={canReorder ? (e) => { if (!e.dataTransfer.types.includes(CHANNEL_DND_TYPE)) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverTarget({ catId: "__voice", index: 0 }); } : undefined}
+                      onDrop={canReorder ? (e) => handleDrop(e, "__voice") : undefined}
+                    >No voice channels</div>
                   ) : (
                     defaultVoiceChannels.map((ch, i) => (
                       <div key={ch.roomId} className="relative" draggable={canReorder}

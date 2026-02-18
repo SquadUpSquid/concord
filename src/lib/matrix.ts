@@ -72,6 +72,7 @@ async function createClient(
 
   // Only publish the client after it is fully initialized.
   matrixClient = client;
+  (globalThis as any).__matrixClient = client;
   emitClientChanged();
   return client;
 }

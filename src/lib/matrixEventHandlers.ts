@@ -215,6 +215,11 @@ function syncRoomList(client: MatrixClient): void {
     }
 
     useRoomStore.getState().setRooms(roomMap);
+
+    // Scan all rooms for voice participants now that rooms are populated
+    for (const room of rooms) {
+      scanVoiceParticipants(client, room.roomId);
+    }
   } catch (err) {
     console.error("syncRoomList failed:", err);
   }
@@ -491,11 +496,27 @@ export function registerEventHandlers(client: MatrixClient): void {
 
   // Initial scan of all rooms for voice participants after sync
   client.once(ClientEvent.Sync, () => {
+    console.debug("[voice] Initial sync complete, scanning all rooms for voice participants");
     const rooms = client.getRooms();
     for (const room of rooms) {
       scanVoiceParticipants(client, room.roomId);
     }
   });
+
+  // Periodic re-scan: state events can be missed (e.g. during initial sync race).
+  // Re-scan voice rooms every 15 seconds to catch any missed updates.
+  setInterval(() => {
+    const rooms = client.getRooms();
+    for (const room of rooms) {
+      const hasCallEvents =
+        room.currentState.getStateEvents("org.matrix.msc3401.call.member").length > 0 ||
+        room.currentState.getStateEvents("m.call.member").length > 0 ||
+        client.getGroupCallForRoom(room.roomId) !== null;
+      if (hasCallEvents) {
+        scanVoiceParticipants(client, room.roomId);
+      }
+    }
+  }, 15_000);
 }
 
 /**
@@ -514,11 +535,10 @@ function userIdFromStateKey(stateKey: string): string | null {
 }
 
 /**
- * Scan a room for active voice/call participants using m.call.member state events.
- * Handles three MatrixRTC formats:
- *   1. Legacy m.calls array with m.devices
- *   2. Legacy memberships array
- *   3. Per-device session keys (newest, used by Element Call)
+ * Scan a room for active voice/call participants.
+ * Uses multiple strategies:
+ *   1. SDK's GroupCall participant tracking (most reliable for active calls)
+ *   2. Manual state event parsing for all three MatrixRTC formats
  */
 function scanVoiceParticipants(client: MatrixClient, roomId: string): void {
   const room = client.getRoom(roomId);
@@ -526,7 +546,21 @@ function scanVoiceParticipants(client: MatrixClient, roomId: string): void {
 
   const homeserverUrl = client.getHomeserverUrl();
   const activeUserIds = new Set<string>();
+  const myUserId = client.getUserId();
 
+  // Strategy 1: Use SDK's GroupCall if one exists for this room
+  const groupCall = client.getGroupCallForRoom(roomId);
+  if (groupCall) {
+    const gcParticipants = groupCall.participants;
+    if (gcParticipants && gcParticipants.size > 0) {
+      for (const [member] of gcParticipants) {
+        activeUserIds.add(member.userId);
+      }
+      console.debug(`[voice] Room ${roomId}: SDK GroupCall found ${gcParticipants.size} participants`);
+    }
+  }
+
+  // Strategy 2: Parse state events manually (catches formats the SDK doesn't handle)
   const memberEvents = [
     ...room.currentState.getStateEvents("org.matrix.msc3401.call.member"),
     ...room.currentState.getStateEvents("m.call.member"),
@@ -576,11 +610,19 @@ function scanVoiceParticipants(client: MatrixClient, roomId: string): void {
       isActive = true;
     }
 
-    if (isActive) activeUserIds.add(userId);
+    if (isActive) {
+      activeUserIds.add(userId);
+      console.debug(`[voice] Room ${roomId}: state event detected active user ${userId} (key=${stateKey})`);
+    }
+  }
+
+  if (memberEvents.length > 0 || groupCall) {
+    console.debug(`[voice] Room ${roomId}: ${memberEvents.length} state events, ${activeUserIds.size} active users`);
   }
 
   const participants: CallParticipant[] = [];
   for (const userId of activeUserIds) {
+    if (userId === myUserId && useCallStore.getState().activeCallRoomId === roomId) continue;
     const member = room.getMember(userId);
     if (!member) continue;
     participants.push({
@@ -596,6 +638,42 @@ function scanVoiceParticipants(client: MatrixClient, roomId: string): void {
 
   useCallStore.getState().setRoomParticipants(roomId, participants);
 }
+
+/**
+ * Debug helper: dump all call-related state events for a room.
+ * Call from browser console: window.__debugVoiceRoom("!roomId:server")
+ */
+(globalThis as any).__debugVoiceRoom = (roomId: string) => {
+  const client = (globalThis as any).__matrixClient as MatrixClient | undefined;
+  if (!client) {
+    console.warn("[voice-debug] No matrix client available. Try: window.__matrixClient = getMatrixClient()");
+    return;
+  }
+  const room = client.getRoom(roomId);
+  if (!room) { console.warn("[voice-debug] Room not found:", roomId); return; }
+
+  const eventTypes = [
+    "org.matrix.msc3401.call.member",
+    "m.call.member",
+    "org.matrix.msc3401.call",
+  ];
+  for (const type of eventTypes) {
+    const events = room.currentState.getStateEvents(type);
+    console.log(`[voice-debug] ${type}: ${events.length} events`);
+    for (const ev of events) {
+      console.log(`  key="${ev.getStateKey()}" content=`, ev.getContent());
+    }
+  }
+  const gc = client.getGroupCallForRoom(roomId);
+  if (gc) {
+    console.log(`[voice-debug] GroupCall found, participants:`, gc.participants.size);
+    for (const [member, devices] of gc.participants) {
+      console.log(`  ${member.userId}: ${devices.size} devices`);
+    }
+  } else {
+    console.log("[voice-debug] No SDK GroupCall for this room");
+  }
+};
 
 export function loadRoomMessages(client: MatrixClient, roomId: string): void {
   const room = client.getRoom(roomId);

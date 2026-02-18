@@ -641,42 +641,6 @@ function scanVoiceParticipants(client: MatrixClient, roomId: string): void {
   useCallStore.getState().setRoomParticipants(roomId, participants);
 }
 
-/**
- * Debug helper: dump all call-related state events for a room.
- * Call from browser console: window.__debugVoiceRoom("!roomId:server")
- */
-(globalThis as any).__debugVoiceRoom = (roomId: string) => {
-  const client = (globalThis as any).__matrixClient as MatrixClient | undefined;
-  if (!client) {
-    console.warn("[voice-debug] No matrix client available. Try: window.__matrixClient = getMatrixClient()");
-    return;
-  }
-  const room = client.getRoom(roomId);
-  if (!room) { console.warn("[voice-debug] Room not found:", roomId); return; }
-
-  const eventTypes = [
-    "org.matrix.msc3401.call.member",
-    "m.call.member",
-    "org.matrix.msc3401.call",
-  ];
-  for (const type of eventTypes) {
-    const events = room.currentState.getStateEvents(type);
-    console.log(`[voice-debug] ${type}: ${events.length} events`);
-    for (const ev of events) {
-      console.log(`  key="${ev.getStateKey()}" content=`, ev.getContent());
-    }
-  }
-  const gc = client.getGroupCallForRoom(roomId);
-  if (gc) {
-    console.log(`[voice-debug] GroupCall found, participants:`, gc.participants.size);
-    for (const [member, devices] of gc.participants) {
-      console.log(`  ${member.userId}: ${devices.size} devices`);
-    }
-  } else {
-    console.log("[voice-debug] No SDK GroupCall for this room");
-  }
-};
-
 export function loadRoomMessages(client: MatrixClient, roomId: string): void {
   const room = client.getRoom(roomId);
   if (!room) return;

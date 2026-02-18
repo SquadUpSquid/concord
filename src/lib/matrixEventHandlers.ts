@@ -521,15 +521,17 @@ export function registerEventHandlers(client: MatrixClient): void {
 
 /**
  * Extract the userId from a call.member state key.
- * Format 3 (per-device) uses `_@user:server_DEVICEID` as the state key.
- * Legacy formats use `@user:server` directly.
+ * Per-device keys use `_@user:server_DEVICEID_callId` format.
+ * Legacy keys use `@user:server` directly.
  */
 function userIdFromStateKey(stateKey: string): string | null {
-  if (stateKey.startsWith("_")) {
-    const inner = stateKey.slice(1);
-    const lastUnderscore = inner.lastIndexOf("_");
-    if (lastUnderscore > 0) return inner.slice(0, lastUnderscore);
-    return inner;
+  if (stateKey.startsWith("_@")) {
+    const inner = stateKey.slice(1); // "@user:server_DEVICEID_m.call"
+    const colonIdx = inner.indexOf(":");
+    if (colonIdx < 0) return null;
+    const underscoreAfterServer = inner.indexOf("_", colonIdx);
+    if (underscoreAfterServer < 0) return inner;
+    return inner.slice(0, underscoreAfterServer);
   }
   return stateKey.startsWith("@") ? stateKey : null;
 }

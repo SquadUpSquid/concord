@@ -459,8 +459,12 @@ export function registerEventHandlers(client: MatrixClient): void {
     // Channel categories changed
     if (event.getType() === "org.concord.space.categories") {
       const content = event.getContent();
+      const store = useCategoryStore.getState();
       if (Array.isArray(content?.categories)) {
-        useCategoryStore.getState().setCategories(roomId, content.categories);
+        store.setCategories(roomId, content.categories);
+      }
+      if (Array.isArray(content?.sectionOrder)) {
+        store.setSectionOrder(roomId, content.sectionOrder);
       }
     }
 
@@ -480,8 +484,12 @@ export function registerEventHandlers(client: MatrixClient): void {
         const catEvent = room.currentState.getStateEvents("org.concord.space.categories", "");
         if (catEvent) {
           const content = catEvent.getContent();
+          const store = useCategoryStore.getState();
           if (Array.isArray(content?.categories)) {
-            useCategoryStore.getState().setCategories(room.roomId, content.categories);
+            store.setCategories(room.roomId, content.categories);
+          }
+          if (Array.isArray(content?.sectionOrder)) {
+            store.setSectionOrder(room.roomId, content.sectionOrder);
           }
         }
       }

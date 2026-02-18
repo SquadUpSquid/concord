@@ -81,7 +81,7 @@ export function DmItem({ roomId, name, unreadCount, isSelected, onClick }: DmIte
     <button
       onClick={onClick}
       onContextMenu={handleContextMenu}
-      className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors ${
+      className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left transition-colors ${
         isSelected
           ? "bg-bg-active text-text-primary"
           : hasUnread

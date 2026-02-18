@@ -181,7 +181,8 @@ function syncRoomList(client: MatrixClient): void {
       }
     }
 
-    // Resolve space parents
+    // Resolve space parents and load categories/section order
+    const catStore = useCategoryStore.getState();
     for (const room of rooms) {
       try {
         if (room.isSpaceRoom()) {
@@ -193,6 +194,18 @@ function syncRoomList(client: MatrixClient): void {
               if (child && !child.parentSpaceId) {
                 child.parentSpaceId = room.roomId;
               }
+            }
+          }
+
+          // Load custom categories and section order from space state
+          const catEvent = room.currentState.getStateEvents("org.concord.space.categories", "");
+          if (catEvent) {
+            const content = catEvent.getContent();
+            if (Array.isArray(content?.categories)) {
+              catStore.setCategories(room.roomId, content.categories);
+            }
+            if (Array.isArray(content?.sectionOrder)) {
+              catStore.setSectionOrder(room.roomId, content.sectionOrder);
             }
           }
         }
@@ -475,24 +488,11 @@ export function registerEventHandlers(client: MatrixClient): void {
     }
   });
 
-  // Initial scan of all rooms for voice participants and categories after sync
+  // Initial scan of all rooms for voice participants after sync
   client.once(ClientEvent.Sync, () => {
     const rooms = client.getRooms();
     for (const room of rooms) {
       scanVoiceParticipants(client, room.roomId);
-      if (room.isSpaceRoom()) {
-        const catEvent = room.currentState.getStateEvents("org.concord.space.categories", "");
-        if (catEvent) {
-          const content = catEvent.getContent();
-          const store = useCategoryStore.getState();
-          if (Array.isArray(content?.categories)) {
-            store.setCategories(room.roomId, content.categories);
-          }
-          if (Array.isArray(content?.sectionOrder)) {
-            store.setSectionOrder(room.roomId, content.sectionOrder);
-          }
-        }
-      }
     }
   });
 }

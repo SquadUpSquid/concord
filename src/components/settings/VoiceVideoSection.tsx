@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { getMatrixClient } from "@/lib/matrix";
 import { ThemedSelect } from "@/components/common/ThemedSelect";
+import { isLivekitActive, switchLkDevice } from "@/lib/livekit";
 
 interface DeviceInfo {
   deviceId: string;
@@ -96,17 +97,29 @@ export function VoiceVideoSection() {
   const handleAudioInputChange = (deviceId: string) => {
     const value = deviceId === "" ? null : deviceId;
     setAudioInputDeviceId(value);
-    applyInputDevicesToSdk(value, videoInputDeviceId);
+    if (isLivekitActive() && value) {
+      switchLkDevice("audioinput", value).catch(() => {});
+    } else {
+      applyInputDevicesToSdk(value, videoInputDeviceId);
+    }
   };
 
   const handleAudioOutputChange = (deviceId: string) => {
-    setAudioOutputDeviceId(deviceId === "" ? null : deviceId);
+    const value = deviceId === "" ? null : deviceId;
+    setAudioOutputDeviceId(value);
+    if (isLivekitActive() && value) {
+      switchLkDevice("audiooutput", value).catch(() => {});
+    }
   };
 
   const handleVideoInputChange = (deviceId: string) => {
     const value = deviceId === "" ? null : deviceId;
     setVideoInputDeviceId(value);
-    applyInputDevicesToSdk(audioInputDeviceId, value);
+    if (isLivekitActive() && value) {
+      switchLkDevice("videoinput", value).catch(() => {});
+    } else {
+      applyInputDevicesToSdk(audioInputDeviceId, value);
+    }
   };
 
   if (loading) {

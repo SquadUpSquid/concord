@@ -12,6 +12,18 @@ import { CallFeed, CallFeedEvent } from "matrix-js-sdk/lib/webrtc/callFeed";
 import { getMatrixClient } from "@/lib/matrix";
 import { mxcToHttp } from "@/utils/matrixHelpers";
 import { useSettingsStore } from "@/stores/settingsStore";
+import {
+  getLivekitFocus,
+  fetchLivekitToken,
+  joinLivekitCall,
+  leaveLivekitCall,
+  isLivekitActive,
+  toggleLkMic,
+  toggleLkVideo,
+  toggleLkScreenShare,
+  getLkFeedStream,
+  getActiveLkRoom,
+} from "@/lib/livekit";
 
 // --- Types ---
 
@@ -68,7 +80,7 @@ export function getActiveGroupCall(): GroupCall | null {
 }
 
 export function getFeedStream(feedId: string): MediaStream | null {
-  return feedStreamMap.get(feedId) ?? null;
+  return feedStreamMap.get(feedId) ?? getLkFeedStream(feedId) ?? null;
 }
 
 // --- Event listener helpers ---
@@ -281,7 +293,7 @@ export const useCallStore = create<CallState>()((set, get) => ({
     set({ connectionState: "connecting", activeCallRoomId: roomId, error: null });
 
     try {
-      // Wait for initial sync if not done yet (SDK creates call handlers after sync)
+      // Wait for initial sync if not done yet
       if (!client.isInitialSyncComplete()) {
         await new Promise<void>((resolve) => {
           const onSync = (state: SyncState) => {
@@ -294,6 +306,32 @@ export const useCallStore = create<CallState>()((set, get) => ({
         });
       }
 
+      // --- Check if the room uses LiveKit ---
+      const lkFocus = getLivekitFocus(client, roomId);
+
+      if (lkFocus) {
+        // LiveKit path
+        console.log("[livekit] Room uses LiveKit, fetching token from", lkFocus.livekitServiceUrl);
+        const { url, jwt } = await fetchLivekitToken(client, lkFocus.livekitServiceUrl, roomId);
+        console.log("[livekit] Token received, connecting to", url);
+
+        // Apply preferred devices after connection via LiveKit APIs
+        await joinLivekitCall(client, roomId, url, jwt, lkFocus);
+
+        const { audioInputDeviceId, videoInputDeviceId } = useSettingsStore.getState();
+        const lkRoom = getActiveLkRoom();
+        if (lkRoom) {
+          if (audioInputDeviceId) {
+            await lkRoom.switchActiveDevice("audioinput", audioInputDeviceId).catch(() => {});
+          }
+          if (videoInputDeviceId) {
+            await lkRoom.switchActiveDevice("videoinput", videoInputDeviceId).catch(() => {});
+          }
+        }
+        return;
+      }
+
+      // --- Legacy WebRTC GroupCall path ---
       if (!client.groupCallEventHandler) {
         throw new Error(
           "Voice calls are not supported in this environment. WebRTC may not be available."
@@ -301,15 +339,11 @@ export const useCallStore = create<CallState>()((set, get) => ({
       }
       await client.groupCallEventHandler.waitUntilRoomReadyForGroupCalls(roomId);
 
-      // Try to get an existing group call first (created by another participant)
       let groupCall = client.getGroupCallForRoom(roomId);
 
-      // If no existing group call, try to find one by checking room state for
-      // org.matrix.msc3401.call or io.element.video state events
       if (!groupCall) {
         const room = client.getRoom(roomId);
         if (room) {
-          // Force the GroupCallEventHandler to re-scan this room
           try {
             client.groupCallEventHandler.waitUntilRoomReadyForGroupCalls(roomId);
             await new Promise((r) => setTimeout(r, 500));
@@ -320,18 +354,16 @@ export const useCallStore = create<CallState>()((set, get) => ({
         }
       }
 
-      // Still no call - create one
       if (!groupCall) {
         try {
           groupCall = await client.createGroupCall(
             roomId,
             GroupCallType.Video,
-            false, // isPtt
+            false,
             GroupCallIntent.Room,
           );
         } catch (createErr) {
           console.warn("Could not create group call, checking for existing:", createErr);
-          // Wait longer for room state sync, then check again with retries
           for (let i = 0; i < 3; i++) {
             await new Promise((r) => setTimeout(r, 2000));
             groupCall = client.getGroupCallForRoom(roomId);
@@ -346,7 +378,6 @@ export const useCallStore = create<CallState>()((set, get) => ({
       activeGroupCall = groupCall;
       attachGroupCallListeners(groupCall, set, get);
 
-      // Apply user's preferred input devices before entering
       const { audioInputDeviceId, videoInputDeviceId } = useSettingsStore.getState();
       const mediaHandler = client.getMediaHandler?.();
       if (mediaHandler) {
@@ -358,13 +389,9 @@ export const useCallStore = create<CallState>()((set, get) => ({
           .catch((err) => console.warn("Failed to set media devices:", err));
       }
 
-      // Enter the call (requests mic, starts WebRTC connections)
       await groupCall.enter();
-
-      // Voice-first: mute video by default
       await groupCall.setLocalVideoMuted(true);
 
-      // Sync initial screenshare state (local + any existing remote feeds)
       for (const key of feedStreamMap.keys()) {
         if (key.startsWith("screenshare:")) feedStreamMap.delete(key);
       }
@@ -402,7 +429,14 @@ export const useCallStore = create<CallState>()((set, get) => ({
   },
 
   leaveCall: () => {
-    if (activeGroupCall) {
+    if (isLivekitActive()) {
+      const client = getMatrixClient();
+      if (client) {
+        leaveLivekitCall(client).catch((err) =>
+          console.warn("Error during LiveKit leave:", err),
+        );
+      }
+    } else if (activeGroupCall) {
       try {
         activeGroupCall.leave();
       } catch {
@@ -417,6 +451,14 @@ export const useCallStore = create<CallState>()((set, get) => ({
   },
 
   toggleMic: async () => {
+    if (isLivekitActive()) {
+      const ok = await toggleLkMic();
+      if (ok) {
+        const lkRoom = getActiveLkRoom();
+        set({ isMicMuted: !lkRoom?.localParticipant.isMicrophoneEnabled });
+      }
+      return;
+    }
     if (!activeGroupCall) return;
     const newMuted = !get().isMicMuted;
     const success = await activeGroupCall.setMicrophoneMuted(newMuted);
@@ -424,6 +466,14 @@ export const useCallStore = create<CallState>()((set, get) => ({
   },
 
   toggleVideo: async () => {
+    if (isLivekitActive()) {
+      const ok = await toggleLkVideo();
+      if (ok) {
+        const lkRoom = getActiveLkRoom();
+        set({ isVideoMuted: !lkRoom?.localParticipant.isCameraEnabled });
+      }
+      return;
+    }
     if (!activeGroupCall) return;
     const newMuted = !get().isVideoMuted;
     const success = await activeGroupCall.setLocalVideoMuted(newMuted);
@@ -432,13 +482,30 @@ export const useCallStore = create<CallState>()((set, get) => ({
 
   toggleDeafen: () => {
     const newDeafened = !get().isDeafened;
+    if (isLivekitActive()) {
+      if (newDeafened) {
+        set({ isDeafened: true, wasMicMutedBeforeDeafen: get().isMicMuted });
+        toggleLkMic().then(() => {
+          const lkRoom = getActiveLkRoom();
+          if (lkRoom?.localParticipant.isMicrophoneEnabled) {
+            lkRoom.localParticipant.setMicrophoneEnabled(false);
+          }
+          set({ isMicMuted: true });
+        });
+      } else {
+        const restoreMuted = get().wasMicMutedBeforeDeafen;
+        set({ isDeafened: false });
+        const lkRoom = getActiveLkRoom();
+        lkRoom?.localParticipant.setMicrophoneEnabled(!restoreMuted);
+        set({ isMicMuted: restoreMuted });
+      }
+      return;
+    }
     if (newDeafened && activeGroupCall) {
-      // Deafening: save current mic state, then mute
       set({ isDeafened: true, wasMicMutedBeforeDeafen: get().isMicMuted });
       activeGroupCall.setMicrophoneMuted(true);
       set({ isMicMuted: true });
     } else if (!newDeafened && activeGroupCall) {
-      // Un-deafening: restore previous mic state
       const restoreMuted = get().wasMicMutedBeforeDeafen;
       set({ isDeafened: false });
       activeGroupCall.setMicrophoneMuted(restoreMuted);
@@ -449,6 +516,14 @@ export const useCallStore = create<CallState>()((set, get) => ({
   },
 
   toggleScreenShare: async () => {
+    if (isLivekitActive()) {
+      const ok = await toggleLkScreenShare();
+      if (ok) {
+        const lkRoom = getActiveLkRoom();
+        set({ isScreenSharing: lkRoom?.localParticipant.isScreenShareEnabled ?? false });
+      }
+      return;
+    }
     if (!activeGroupCall) return;
     const newEnabled = !get().isScreenSharing;
     const success = await activeGroupCall.setScreensharingEnabled(newEnabled);

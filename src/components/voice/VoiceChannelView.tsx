@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useCallStore, CallParticipant } from "@/stores/callStore";
 import { useRoomStore } from "@/stores/roomStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -34,6 +34,7 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
   const showMembers = useUiStore((s) => s.showMemberSidebar);
 
   const [showChat, setShowChat] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
 
   useEffect(() => {
     if (showChat) {
@@ -41,6 +42,33 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
       if (client) loadRoomMessages(client, roomId);
     }
   }, [showChat, roomId]);
+
+  const debugInfo = useMemo(() => {
+    if (!showDebug) return null;
+    const client = getMatrixClient();
+    if (!client) return { error: "No matrix client" };
+    const matrixRoom = client.getRoom(roomId);
+    if (!matrixRoom) return { error: "Room not found" };
+
+    const eventTypes = [
+      "org.matrix.msc3401.call.member",
+      "m.call.member",
+      "org.matrix.msc3401.call",
+    ];
+    const events: { type: string; key: string; content: unknown }[] = [];
+    for (const type of eventTypes) {
+      for (const ev of matrixRoom.currentState.getStateEvents(type)) {
+        events.push({ type, key: ev.getStateKey() ?? "", content: ev.getContent() });
+      }
+    }
+    const gc = client.getGroupCallForRoom(roomId);
+    return {
+      roomId,
+      roomType: (matrixRoom as any).getType?.() ?? "unknown",
+      stateEvents: events,
+      groupCall: gc ? { id: gc.groupCallId, state: gc.state, participants: gc.participants.size } : null,
+    };
+  }, [showDebug, roomId]);
 
   const isInThisCall = activeCallRoomId === roomId && connectionState === "connected";
   const isConnecting = activeCallRoomId === roomId && connectionState === "connecting";
@@ -204,6 +232,19 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
             >
               Join Voice
             </button>
+
+            {/* Temporary debug panel */}
+            <button
+              onClick={() => setShowDebug((v) => !v)}
+              className="mt-4 text-xs text-text-muted underline hover:text-text-secondary"
+            >
+              {showDebug ? "Hide debug info" : "Debug: show voice state events"}
+            </button>
+            {showDebug && debugInfo && (
+              <pre className="mt-2 max-h-60 max-w-lg overflow-auto rounded bg-bg-secondary p-3 text-left text-xs text-text-secondary">
+                {JSON.stringify(debugInfo, null, 2)}
+              </pre>
+            )}
           </div>
         ) : isConnecting ? (
           /* Connecting state */

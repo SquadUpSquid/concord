@@ -215,6 +215,11 @@ function syncRoomList(client: MatrixClient): void {
     }
 
     useRoomStore.getState().setRooms(roomMap);
+
+    // Scan all rooms for voice participants now that rooms are populated
+    for (const room of rooms) {
+      scanVoiceParticipants(client, room.roomId);
+    }
   } catch (err) {
     console.error("syncRoomList failed:", err);
   }
@@ -481,62 +486,147 @@ export function registerEventHandlers(client: MatrixClient): void {
       }
     }
 
-    // Voice channel participant tracking via m.call.member state events
+    // Voice channel participant tracking via MatrixRTC state events
     if (event.getType() === "org.matrix.msc3401.call.member" ||
-        event.getType() === "m.call.member") {
+        event.getType() === "m.call.member" ||
+        event.getType() === "org.matrix.msc3401.call") {
       scanVoiceParticipants(client, roomId);
     }
   });
 
   // Initial scan of all rooms for voice participants after sync
   client.once(ClientEvent.Sync, () => {
+    console.debug("[voice] Initial sync complete, scanning all rooms for voice participants");
     const rooms = client.getRooms();
     for (const room of rooms) {
       scanVoiceParticipants(client, room.roomId);
     }
   });
+
+  // Periodic re-scan: state events can be missed (e.g. during initial sync race).
+  // Re-scan voice rooms every 15 seconds to catch any missed updates.
+  setInterval(() => {
+    const rooms = client.getRooms();
+    for (const room of rooms) {
+      const hasCallEvents =
+        room.currentState.getStateEvents("org.matrix.msc3401.call.member").length > 0 ||
+        room.currentState.getStateEvents("m.call.member").length > 0 ||
+        client.getGroupCallForRoom(room.roomId) !== null;
+      if (hasCallEvents) {
+        scanVoiceParticipants(client, room.roomId);
+      }
+    }
+  }, 15_000);
 }
 
 /**
- * Scan a room for active voice/call participants using m.call.member state events.
- * Updates the callStore.participantsByRoom for display in the sidebar.
+ * Extract the userId from a call.member state key.
+ * Per-device keys use `_@user:server_DEVICEID_callId` format.
+ * Legacy keys use `@user:server` directly.
+ */
+function userIdFromStateKey(stateKey: string): string | null {
+  if (stateKey.startsWith("_@")) {
+    const inner = stateKey.slice(1); // "@user:server_DEVICEID_m.call"
+    const colonIdx = inner.indexOf(":");
+    if (colonIdx < 0) return null;
+    const underscoreAfterServer = inner.indexOf("_", colonIdx);
+    if (underscoreAfterServer < 0) return inner;
+    return inner.slice(0, underscoreAfterServer);
+  }
+  return stateKey.startsWith("@") ? stateKey : null;
+}
+
+/**
+ * Scan a room for active voice/call participants.
+ * Uses multiple strategies:
+ *   1. SDK's GroupCall participant tracking (most reliable for active calls)
+ *   2. Manual state event parsing for all three MatrixRTC formats
  */
 function scanVoiceParticipants(client: MatrixClient, roomId: string): void {
   const room = client.getRoom(roomId);
   if (!room) return;
 
   const homeserverUrl = client.getHomeserverUrl();
-  const participants: CallParticipant[] = [];
+  const activeUserIds = new Set<string>();
+  const myUserId = client.getUserId();
 
-  // Check for org.matrix.msc3401.call.member (MSC3401) state events
+  // Strategy 1: Use SDK's GroupCall if one exists for this room
+  const groupCall = client.getGroupCallForRoom(roomId);
+  if (groupCall) {
+    const gcParticipants = groupCall.participants;
+    if (gcParticipants && gcParticipants.size > 0) {
+      for (const [member] of gcParticipants) {
+        activeUserIds.add(member.userId);
+      }
+      console.debug(`[voice] Room ${roomId}: SDK GroupCall found ${gcParticipants.size} participants`);
+    }
+  }
+
+  // Strategy 2: Parse state events manually (catches formats the SDK doesn't handle)
   const memberEvents = [
     ...room.currentState.getStateEvents("org.matrix.msc3401.call.member"),
     ...room.currentState.getStateEvents("m.call.member"),
   ];
 
-  for (const event of memberEvents) {
-    const userId = event.getStateKey();
-    if (!userId) continue;
-    const content = event.getContent();
+  const now = Date.now();
 
-    // Check if the member is actively in a call
-    // The content has "m.calls" array - each entry has "m.call_id" and "m.devices"
-    const calls = content["m.calls"] ?? [];
+  for (const event of memberEvents) {
+    const stateKey = event.getStateKey();
+    if (!stateKey) continue;
+    const userId = userIdFromStateKey(stateKey);
+    if (!userId) continue;
+    if (activeUserIds.has(userId)) continue;
+
+    const content = event.getContent();
+    if (!content || Object.keys(content).length === 0) continue;
+
     let isActive = false;
 
-    for (const call of calls) {
-      const devices = call["m.devices"] ?? [];
-      if (devices.length > 0) {
-        isActive = true;
-        break;
+    // Format 1: Legacy m.calls → m.devices
+    const calls = content["m.calls"];
+    if (Array.isArray(calls)) {
+      for (const call of calls) {
+        const devices = call["m.devices"] ?? [];
+        if (devices.length > 0) { isActive = true; break; }
       }
     }
 
-    if (!isActive) continue;
+    // Format 2: Legacy memberships array
+    if (!isActive) {
+      const memberships = content["memberships"];
+      if (Array.isArray(memberships)) {
+        for (const m of memberships) {
+          const expiresMs = m["expires"] ?? m["expires_ts"];
+          const createdTs = m["created_ts"] ?? event.getTs();
+          if (typeof expiresMs === "number" && typeof createdTs === "number") {
+            if (createdTs + expiresMs < now) continue;
+          }
+          isActive = true;
+          break;
+        }
+      }
+    }
 
+    // Format 3: Per-device session content (has "application" field)
+    if (!isActive && typeof content["application"] === "string") {
+      isActive = true;
+    }
+
+    if (isActive) {
+      activeUserIds.add(userId);
+      console.debug(`[voice] Room ${roomId}: state event detected active user ${userId} (key=${stateKey})`);
+    }
+  }
+
+  if (memberEvents.length > 0 || groupCall) {
+    console.debug(`[voice] Room ${roomId}: ${memberEvents.length} state events, ${activeUserIds.size} active users`);
+  }
+
+  const participants: CallParticipant[] = [];
+  for (const userId of activeUserIds) {
+    if (userId === myUserId && useCallStore.getState().activeCallRoomId === roomId) continue;
     const member = room.getMember(userId);
     if (!member) continue;
-
     participants.push({
       userId,
       displayName: member.name ?? userId,

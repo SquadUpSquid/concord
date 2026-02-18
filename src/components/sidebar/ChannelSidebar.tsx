@@ -14,6 +14,7 @@ import { getMatrixClient } from "@/lib/matrix";
 import { mxcToHttp } from "@/utils/matrixHelpers";
 
 const CHANNEL_DND_TYPE = "application/x-concord-channel";
+const EMPTY_CATEGORIES: Category[] = [];
 
 export function ChannelSidebar() {
   const rooms = useRoomStore((s) => s.rooms);
@@ -29,7 +30,9 @@ export function ChannelSidebar() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const channelPrefs = useChannelPrefsStore((s) => s.prefs);
-  const categories = useCategoryStore((s) => selectedSpaceId ? s.getCategories(selectedSpaceId) : []);
+  const categories = useCategoryStore((s) =>
+    selectedSpaceId ? (s.categoriesBySpace[selectedSpaceId] ?? EMPTY_CATEGORIES) : EMPTY_CATEGORIES
+  );
   const saveCategories = useCategoryStore((s) => s.saveCategories);
 
   const [favoritesCollapsed, setFavoritesCollapsed] = useState(false);

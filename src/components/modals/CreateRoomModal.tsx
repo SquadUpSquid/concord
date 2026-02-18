@@ -9,6 +9,9 @@ import { Visibility, Preset } from "matrix-js-sdk";
 import type { ChannelType } from "@/stores/roomStore";
 import { EmojiPicker } from "@/components/chat/EmojiPicker";
 import { ThemedSelect } from "@/components/common/ThemedSelect";
+import type { Category } from "@/stores/categoryStore";
+
+const EMPTY_CATEGORIES: Category[] = [];
 
 export function CreateRoomModal() {
   const closeModal = useUiStore((s) => s.closeModal);
@@ -17,7 +20,7 @@ export function CreateRoomModal() {
   const homeserverUrl = useAuthStore((s) => s.homeserverUrl);
 
   const categories = useCategoryStore((s) =>
-    selectedSpaceId ? s.getCategories(selectedSpaceId) : []
+    selectedSpaceId ? (s.categoriesBySpace[selectedSpaceId] ?? EMPTY_CATEGORIES) : EMPTY_CATEGORIES
   );
   const saveCategories = useCategoryStore((s) => s.saveCategories);
 

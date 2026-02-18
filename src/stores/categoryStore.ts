@@ -19,12 +19,13 @@ interface CategoryState {
 }
 
 const STATE_EVENT_TYPE = "org.concord.space.categories";
+const EMPTY_CATEGORIES: Category[] = [];
 
 export const useCategoryStore = create<CategoryState>()((set, get) => ({
   categoriesBySpace: {},
 
   getCategories(spaceId: string): Category[] {
-    return get().categoriesBySpace[spaceId] ?? [];
+    return get().categoriesBySpace[spaceId] ?? EMPTY_CATEGORIES;
   },
 
   setCategories(spaceId: string, categories: Category[]) {

@@ -12,13 +12,17 @@ Concord aims to bring a familiar, modern chat experience to the Matrix ecosystem
 
 - **Matrix Protocol** — Full Matrix client powered by [matrix-js-sdk](https://github.com/matrix-org/matrix-js-sdk) with end-to-end encryption (Rust crypto)
 - **Discord-style Layout** — Three-column UI: servers (spaces), channels, and chat
-- **Spaces & Channels** — Organize rooms into spaces with separate text and voice channels
+- **Spaces & Channels** — Organize rooms into spaces with custom text and voice channel sections
 - **Rich Messaging** — Markdown (GFM), code syntax highlighting, replies, reactions, and emoji picker
-- **Voice & Video Chat** — Group calls via Matrix with mic/video/screenshare controls, speaker detection, and participant grid
+- **Voice & Video Chat** — LiveKit SFU integration for voice/video calls with mic, camera, screenshare, speaker detection, and participant grid (with legacy GroupCall fallback)
+- **Voice Channel Text Chat** — Toggleable, resizable text chat panel attached to voice channels
+- **Channel Organization** — Drag-and-drop reordering of channels and sections within spaces (admin/moderator only)
+- **Direct Messages** — Dedicated DM section separate from space channels
 - **Typing Indicators** — See who's typing in real time
 - **Presence** — Online, away, and offline status for all users
 - **Member Sidebar** — View room members with roles and presence
 - **Unread Tracking** — Badge counts on channels with unread messages
+- **Themes** — Multiple dark themes (default, green, orange, red, blue)
 - **Desktop App** — Native desktop experience via [Tauri](https://tauri.app) (lightweight, no Electron)
 
 ## Tech Stack
@@ -45,8 +49,11 @@ Concord aims to bring a familiar, modern chat experience to the Matrix ecosystem
 sudo apt update
 sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
   libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
-  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good
+  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+  gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-nice
 ```
+
+> **Note:** Voice/video calls require WebRTC support. Ubuntu/Debian ship WebKitGTK without WebRTC enabled at build time. Voice calls work fully on **Windows** and **macOS**. On Linux, a custom WebKitGTK build with `-DENABLE_WEB_RTC=ON` is required for voice — see [this discussion](https://github.com/tauri-apps/tauri/discussions/8426) for details.
 
 ### macOS
 
@@ -131,13 +138,14 @@ concord/
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or pull request.
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/my-feature`)
 3. Make your changes and add tests where appropriate
 4. Run `npm test` to ensure everything passes
 5. Commit and push, then open a PR
+6. Sign the [CLA](CLA.md) when prompted by the bot on your PR
 
 ## License
 

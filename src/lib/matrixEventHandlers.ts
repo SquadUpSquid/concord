@@ -377,6 +377,17 @@ export function registerEventHandlers(client: MatrixClient): void {
     try {
       if (membership === "invite" || membership === "join") {
         const summary = buildRoomSummary(room, client);
+        // Resolve space parent
+        for (const existingRoom of client.getRooms()) {
+          if (existingRoom.isSpaceRoom()) {
+            const childEvents = existingRoom.currentState.getStateEvents("m.space.child");
+            for (const ev of childEvents) {
+              if (ev.getStateKey() === room.roomId) {
+                summary.parentSpaceId = existingRoom.roomId;
+              }
+            }
+          }
+        }
         const rooms = new Map(useRoomStore.getState().rooms);
         rooms.set(room.roomId, summary);
         useRoomStore.getState().setRooms(rooms);
@@ -423,6 +434,25 @@ export function registerEventHandlers(client: MatrixClient): void {
     if (event.getType() === "m.room.topic") {
       const topic = event.getContent()?.topic ?? null;
       useRoomStore.getState().updateRoom(roomId, { topic });
+    }
+
+    // Space child added/removed — update the child room's parentSpaceId
+    if (event.getType() === "m.space.child") {
+      const childId = event.getStateKey();
+      if (childId) {
+        const content = event.getContent();
+        const hasVia = content?.via && Array.isArray(content.via) && content.via.length > 0;
+        if (hasVia) {
+          // Child added to this space
+          useRoomStore.getState().updateRoom(childId, { parentSpaceId: roomId });
+        } else {
+          // Child removed from this space (empty content means removal)
+          const existing = useRoomStore.getState().rooms.get(childId);
+          if (existing?.parentSpaceId === roomId) {
+            useRoomStore.getState().updateRoom(childId, { parentSpaceId: null });
+          }
+        }
+      }
     }
 
     // Voice channel participant tracking via m.call.member state events

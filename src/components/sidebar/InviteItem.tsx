@@ -35,7 +35,7 @@ export function InviteItem({ room }: InviteItemProps) {
   };
 
   return (
-    <div className="flex items-center gap-2 rounded-sm px-2 py-1.5">
+    <div className="flex items-center gap-2 rounded px-2 py-1">
       <Avatar name={room.name} url={room.avatarUrl} size={32} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm text-text-primary">{room.name}</p>

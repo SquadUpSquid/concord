@@ -1,23 +1,58 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useUiStore } from "@/stores/uiStore";
 import { useRoomStore } from "@/stores/roomStore";
+import { useAuthStore } from "@/stores/authStore";
+import { usePresenceStore, PresenceStatus } from "@/stores/presenceStore";
+import { Avatar } from "@/components/common/Avatar";
+import { getMatrixClient } from "@/lib/matrix";
+import { mxcToHttp } from "@/utils/matrixHelpers";
 import { PinnedMessages } from "./PinnedMessages";
 import { SearchPanel } from "./SearchPanel";
 
 interface ChatHeaderProps {
   name: string;
   topic: string | null;
+  isDm?: boolean;
+  roomId?: string;
 }
 
-export function ChatHeader({ name, topic }: ChatHeaderProps) {
+const PRESENCE_LABELS: Record<PresenceStatus, string> = {
+  online: "Online",
+  unavailable: "Idle",
+  offline: "Offline",
+};
+
+export function ChatHeader({ name, topic, isDm, roomId }: ChatHeaderProps) {
   const toggleMembers = useUiStore((s) => s.toggleMemberSidebar);
   const showMembers = useUiStore((s) => s.showMemberSidebar);
   const openModal = useUiStore((s) => s.openModal);
   const selectedRoomId = useRoomStore((s) => s.selectedRoomId);
+  const myUserId = useAuthStore((s) => s.userId);
   const [showPinned, setShowPinned] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const pinnedRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  // Resolve the other user in a DM
+  const otherUser = useMemo(() => {
+    if (!isDm || !roomId) return null;
+    const client = getMatrixClient();
+    if (!client) return null;
+    const room = client.getRoom(roomId);
+    if (!room) return null;
+    const members = room.getJoinedMembers();
+    const other = members.find((m) => m.userId !== myUserId) ?? members[0];
+    if (!other) return null;
+    return {
+      userId: other.userId,
+      displayName: other.name || other.userId,
+      avatarUrl: mxcToHttp(other.getMxcAvatarUrl(), client.getHomeserverUrl()),
+    };
+  }, [isDm, roomId, myUserId]);
+
+  const otherPresence: PresenceStatus = usePresenceStore(
+    (s) => s.presenceByUser.get(otherUser?.userId ?? "")?.presence ?? "offline"
+  );
 
   // Close panels on outside click
   useEffect(() => {
@@ -36,12 +71,30 @@ export function ChatHeader({ name, topic }: ChatHeaderProps) {
 
   return (
     <div className="flex h-12 items-center border-b border-bg-tertiary px-4 shadow-sm">
-      <span className="mr-1 text-text-muted">#</span>
-      <h3 className="font-semibold text-text-primary">{name}</h3>
-      {topic && (
+      {isDm && otherUser ? (
         <>
+          <Avatar
+            name={otherUser.displayName}
+            url={otherUser.avatarUrl}
+            size={24}
+            presence={otherPresence}
+          />
+          <h3 className="ml-2 font-semibold text-text-primary">{otherUser.displayName}</h3>
           <div className="mx-3 h-6 w-px bg-bg-active" />
-          <p className="flex-1 truncate text-sm text-text-muted">{topic}</p>
+          <span className={`text-xs ${otherPresence === "online" ? "text-green" : otherPresence === "unavailable" ? "text-yellow" : "text-text-muted"}`}>
+            {PRESENCE_LABELS[otherPresence]}
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="mr-1 text-text-muted">#</span>
+          <h3 className="font-semibold text-text-primary">{name}</h3>
+          {topic && (
+            <>
+              <div className="mx-3 h-6 w-px bg-bg-active" />
+              <p className="flex-1 truncate text-sm text-text-muted">{topic}</p>
+            </>
+          )}
         </>
       )}
       <div className="ml-auto flex items-center gap-1">

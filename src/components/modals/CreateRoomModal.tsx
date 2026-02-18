@@ -3,10 +3,15 @@ import { Modal } from "@/components/common/Modal";
 import { useUiStore } from "@/stores/uiStore";
 import { useRoomStore } from "@/stores/roomStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useCategoryStore } from "@/stores/categoryStore";
 import { getMatrixClient } from "@/lib/matrix";
 import { Visibility, Preset } from "matrix-js-sdk";
 import type { ChannelType } from "@/stores/roomStore";
 import { EmojiPicker } from "@/components/chat/EmojiPicker";
+import { ThemedSelect } from "@/components/common/ThemedSelect";
+import type { Category } from "@/stores/categoryStore";
+
+const EMPTY_CATEGORIES: Category[] = [];
 
 export function CreateRoomModal() {
   const closeModal = useUiStore((s) => s.closeModal);
@@ -14,9 +19,15 @@ export function CreateRoomModal() {
   const selectRoom = useRoomStore((s) => s.selectRoom);
   const homeserverUrl = useAuthStore((s) => s.homeserverUrl);
 
+  const categories = useCategoryStore((s) =>
+    selectedSpaceId ? (s.categoriesBySpace[selectedSpaceId] ?? EMPTY_CATEGORIES) : EMPTY_CATEGORIES
+  );
+  const saveCategories = useCategoryStore((s) => s.saveCategories);
+
   const [name, setName] = useState("");
   const [topic, setTopic] = useState("");
   const [channelType, setChannelType] = useState<ChannelType>("text");
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [isPublic, setIsPublic] = useState(false);
   const [encrypted, setEncrypted] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -79,6 +90,16 @@ export function CreateRoomModal() {
           { via: [homeserver] },
           room_id,
         );
+
+        // Add to selected category if one was chosen
+        if (selectedCategoryId && categories.length > 0) {
+          const updated = categories.map((c) =>
+            c.id === selectedCategoryId
+              ? { ...c, channelIds: [...c.channelIds, room_id] }
+              : c
+          );
+          await saveCategories(selectedSpaceId, updated);
+        }
       }
 
       closeModal();
@@ -187,6 +208,24 @@ export function CreateRoomModal() {
               onChange={(e) => setTopic(e.target.value)}
               placeholder="What is this channel about?"
               className="w-full rounded-sm bg-bg-input p-2.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+        )}
+
+        {/* Category selector — only show when in a space with categories */}
+        {selectedSpaceId && categories.length > 0 && (
+          <div>
+            <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
+              Section
+            </label>
+            <ThemedSelect
+              value={selectedCategoryId}
+              onChange={setSelectedCategoryId}
+              placeholder="None (uncategorized)"
+              options={[
+                { value: "", label: "None (uncategorized)" },
+                ...categories.map((c) => ({ value: c.id, label: c.name })),
+              ]}
             />
           </div>
         )}

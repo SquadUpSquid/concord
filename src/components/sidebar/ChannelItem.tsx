@@ -33,7 +33,7 @@ function VoiceParticipantEntry({ participant }: { participant: CallParticipant }
   const isMe = participant.userId === myUserId;
 
   return (
-    <div className="flex items-center gap-2 rounded-sm py-0.5 pl-8 pr-2 text-text-secondary hover:bg-bg-hover/50">
+    <div className="flex items-center gap-2 rounded py-0.5 pl-8 pr-2 text-text-secondary hover:bg-bg-hover/50">
       <Avatar
         name={participant.displayName}
         url={participant.avatarUrl}
@@ -95,12 +95,14 @@ export function ChannelItem({
     onClick();
   };
 
+  const isVoice = channelType === "voice";
+
   return (
-    <div>
+    <div className={isVoice ? "mb-0.5" : ""}>
       <button
         onClick={handleClick}
         onContextMenu={handleContextMenu}
-        className={`flex w-full items-center gap-1.5 rounded-sm px-2 py-1.5 text-left transition-colors ${
+        className={`flex w-full items-center gap-1.5 rounded px-2 ${isVoice ? "py-1.5" : "py-1"} text-left transition-colors ${
           isSelected
             ? "bg-bg-active text-text-primary"
             : hasUnread
@@ -108,7 +110,7 @@ export function ChannelItem({
               : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
         }`}
       >
-        {channelType === "voice" ? <VoiceChannelIcon active={isActiveVoice} /> : <TextChannelIcon />}
+        {isVoice ? <VoiceChannelIcon active={isActiveVoice} /> : <TextChannelIcon />}
         <span className={`flex-1 truncate text-sm ${hasUnread && !isSelected ? "font-semibold" : ""}`}>
           {name}
         </span>
@@ -129,8 +131,8 @@ export function ChannelItem({
       </button>
 
       {/* Voice channel participants */}
-      {channelType === "voice" && voiceParticipants.length > 0 && (
-        <div className="py-0.5">
+      {isVoice && voiceParticipants.length > 0 && (
+        <div className="pb-0.5 pt-0.5">
           {voiceParticipants.map((p) => (
             <VoiceParticipantEntry
               key={p.userId}

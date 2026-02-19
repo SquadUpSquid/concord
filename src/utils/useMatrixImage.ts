@@ -52,12 +52,16 @@ async function fetchImageAsBlob(
       const res = await tauriFetch(url, { method: "GET", headers });
 
       if (!res.ok) {
+        console.warn("[fetchImageAsBlob] Auth thumbnail failed:", res.status, "for", mxcUrl);
         // Fall back to legacy unauthenticated endpoint
         const parts = mxcUrl.slice(6).split("/");
         const [serverName, mediaId] = parts;
         const legacyUrl = `${hs.replace(/\/$/, "")}/_matrix/media/v3/thumbnail/${serverName}/${mediaId}?width=${width}&height=${height}&method=crop`;
         const legacyRes = await tauriFetch(legacyUrl, { method: "GET" });
-        if (!legacyRes.ok) return null;
+        if (!legacyRes.ok) {
+          console.warn("[fetchImageAsBlob] Legacy thumbnail also failed:", legacyRes.status);
+          return null;
+        }
         const blob = await legacyRes.blob();
         const blobUrl = URL.createObjectURL(blob);
         blobCache.set(mxcUrl, blobUrl);
@@ -69,7 +73,7 @@ async function fetchImageAsBlob(
       blobCache.set(mxcUrl, blobUrl);
       return blobUrl;
     } catch (err) {
-      console.warn("[useMatrixImage] Failed to fetch", mxcUrl, err);
+      console.error("[fetchImageAsBlob] Failed to fetch", mxcUrl, err);
       return null;
     } finally {
       inflightRequests.delete(mxcUrl);
@@ -142,7 +146,10 @@ function buildDownloadUrl(
 
 async function downloadRawMedia(mxcUrl: string): Promise<ArrayBuffer | null> {
   const client = getMatrixClient();
-  if (!client) return null;
+  if (!client) {
+    console.warn("[downloadRawMedia] No Matrix client");
+    return null;
+  }
 
   const hs = client.getHomeserverUrl();
   const token = client.getAccessToken();
@@ -151,18 +158,29 @@ async function downloadRawMedia(mxcUrl: string): Promise<ArrayBuffer | null> {
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await tauriFetch(url, { method: "GET", headers });
+  try {
+    const res = await tauriFetch(url, { method: "GET", headers });
 
-  if (!res.ok) {
-    const parts = mxcUrl.slice(6).split("/");
-    const [serverName, mediaId] = parts;
-    const legacyUrl = `${hs.replace(/\/$/, "")}/_matrix/media/v3/download/${serverName}/${mediaId}`;
-    const legacyRes = await tauriFetch(legacyUrl, { method: "GET" });
-    if (!legacyRes.ok) return null;
-    return await legacyRes.arrayBuffer();
+    if (!res.ok) {
+      console.warn("[downloadRawMedia] Auth endpoint failed:", res.status, "for", mxcUrl);
+      const parts = mxcUrl.slice(6).split("/");
+      const [serverName, mediaId] = parts;
+      const legacyUrl = `${hs.replace(/\/$/, "")}/_matrix/media/v3/download/${serverName}/${mediaId}`;
+      const legacyRes = await tauriFetch(legacyUrl, { method: "GET" });
+      if (!legacyRes.ok) {
+        console.warn("[downloadRawMedia] Legacy endpoint also failed:", legacyRes.status);
+        return null;
+      }
+      const blob = await legacyRes.blob();
+      return await blob.arrayBuffer();
+    }
+
+    const blob = await res.blob();
+    return await blob.arrayBuffer();
+  } catch (err) {
+    console.error("[downloadRawMedia] Fetch error for", mxcUrl, err);
+    return null;
   }
-
-  return await res.arrayBuffer();
 }
 
 async function fetchMediaAsBlob(
@@ -180,23 +198,26 @@ async function fetchMediaAsBlob(
   const promise = (async (): Promise<string | null> => {
     try {
       const raw = await downloadRawMedia(mxcUrl);
-      if (!raw) return null;
+      if (!raw) {
+        console.warn("[fetchMediaAsBlob] Download returned null for", mxcUrl);
+        return null;
+      }
+      console.log("[fetchMediaAsBlob] Downloaded", raw.byteLength, "bytes for", mxcUrl, fileInfo ? "(encrypted)" : "(plain)");
 
-      let data: ArrayBuffer | Blob;
+      let finalBuf: ArrayBuffer;
       if (fileInfo) {
-        data = await decryptAttachment(raw, fileInfo);
+        finalBuf = await decryptAttachment(raw, fileInfo);
+        console.log("[fetchMediaAsBlob] Decrypted to", finalBuf.byteLength, "bytes");
       } else {
-        data = raw;
+        finalBuf = raw;
       }
 
-      const blob = data instanceof Blob
-        ? data
-        : new Blob([data], mimetype ? { type: mimetype } : undefined);
+      const blob = new Blob([finalBuf], mimetype ? { type: mimetype } : undefined);
       const blobUrl = URL.createObjectURL(blob);
       blobCache.set(cacheKey, blobUrl);
       return blobUrl;
     } catch (err) {
-      console.warn("[useMatrixMedia] Failed to fetch", mxcUrl, err);
+      console.error("[fetchMediaAsBlob] Failed for", mxcUrl, err);
       return null;
     } finally {
       inflightRequests.delete(cacheKey);

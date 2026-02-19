@@ -45,10 +45,14 @@ function highlightMentions(text: string, myUserId: string | null): ReactNode[] {
 
 function ImageMessage({ url, body, file, mimetype }: { url: string; body: string; file?: EncryptedFileInfo | null; mimetype?: string }) {
   const [showLightbox, setShowLightbox] = useState(false);
-  const { src: thumbSrc, loading: thumbLoading } = file
-    ? useMatrixMedia(url, file, mimetype)
-    : useMatrixImage(url, 800, 600);
-  const { src: fullSrc } = useMatrixMedia(url, file, mimetype);
+  const isEncrypted = !!file;
+  // Always call both hooks unconditionally (React rules of hooks)
+  const thumbnail = useMatrixImage(isEncrypted ? undefined : url, 800, 600);
+  const fullMedia = useMatrixMedia(url, file, mimetype);
+
+  const thumbSrc = isEncrypted ? fullMedia.src : thumbnail.src;
+  const thumbLoading = isEncrypted ? fullMedia.loading : thumbnail.loading;
+  const fullSrc = fullMedia.src;
 
   return (
     <div className="message-content my-1">

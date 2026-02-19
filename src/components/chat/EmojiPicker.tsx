@@ -1,8 +1,12 @@
 import { useState, useMemo } from "react";
+import { Emoji } from "@/components/common/Emoji";
+import { useCustomEmojiStore, type CustomEmoji } from "@/stores/customEmojiStore";
+import { useMatrixImage } from "@/utils/useMatrixImage";
 
 interface EmojiPickerProps {
   onSelect: (emoji: string) => void;
   onClose: () => void;
+  roomId?: string;
 }
 
 const EMOJI_CATEGORIES: { name: string; emojis: string[] }[] = [
@@ -82,18 +86,45 @@ const EMOJI_CATEGORIES: { name: string; emojis: string[] }[] = [
   },
 ];
 
-export function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
+function CustomEmojiImage({ emoji }: { emoji: CustomEmoji }) {
+  const { src } = useMatrixImage(emoji.url, 32, 32);
+  return (
+    <img
+      src={src ?? undefined}
+      alt={`:${emoji.shortcode}:`}
+      title={`:${emoji.shortcode}:`}
+      className="h-[22px] w-[22px] object-contain"
+      draggable={false}
+    />
+  );
+}
+
+export function EmojiPicker({ onSelect, onClose, roomId }: EmojiPickerProps) {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState(0);
 
+  const roomPacks = useCustomEmojiStore((s) => s.roomPacks);
+  const userPack = useCustomEmojiStore((s) => s.userPack);
+  const customEmojis = useMemo(() => {
+    if (!roomId) return [];
+    return useCustomEmojiStore.getState().getEmojisForRoom(roomId);
+  }, [roomId, roomPacks, userPack]);
+  const hasCustom = customEmojis.length > 0;
+
   const filteredCategories = useMemo(() => {
     if (!search) return EMOJI_CATEGORIES;
-    // Simple filter: show all emojis in a single "Results" category
     const allEmojis = EMOJI_CATEGORIES.flatMap((c) => c.emojis);
-    // For emoji search we can't really text-match, so just show all when searching
-    // In practice you'd want an emoji name database, but this keeps it simple
     return [{ name: "All", emojis: allEmojis }];
   }, [search]);
+
+  const filteredCustom = useMemo(() => {
+    if (!search || !hasCustom) return customEmojis;
+    const q = search.toLowerCase();
+    return customEmojis.filter((e) => e.shortcode.toLowerCase().includes(q));
+  }, [search, customEmojis, hasCustom]);
+
+  const CUSTOM_TAB_INDEX = EMOJI_CATEGORIES.length;
+  const isCustomTab = activeCategory === CUSTOM_TAB_INDEX;
 
   return (
     <div className="flex h-80 w-72 flex-col overflow-hidden rounded-lg bg-bg-floating shadow-xl">
@@ -126,36 +157,77 @@ export function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
               }`}
               title={cat.name}
             >
-              {cat.emojis[0]}
+              <Emoji emoji={cat.emojis[0]} size={16} />
             </button>
           ))}
+          {hasCustom && (
+            <button
+              onClick={() => setActiveCategory(CUSTOM_TAB_INDEX)}
+              className={`rounded px-1.5 py-0.5 text-xs transition-colors ${
+                isCustomTab
+                  ? "bg-bg-active text-text-primary"
+                  : "text-text-muted hover:text-text-primary"
+              }`}
+              title="Custom"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg>
+            </button>
+          )}
         </div>
       )}
 
       {/* Emoji grid */}
       <div className="flex-1 overflow-y-auto p-2">
-        {(search ? filteredCategories : [filteredCategories[activeCategory]]).map(
-          (cat) => (
-            <div key={cat.name}>
-              <p className="mb-1 px-1 text-xs font-semibold uppercase text-text-muted">
-                {cat.name}
-              </p>
-              <div className="grid grid-cols-8 gap-0.5">
-                {cat.emojis.map((emoji) => (
-                  <button
-                    key={emoji}
-                    onClick={() => {
-                      onSelect(emoji);
-                      onClose();
-                    }}
-                    className="flex h-8 w-8 items-center justify-center rounded text-lg hover:bg-bg-hover"
-                  >
-                    {emoji}
-                  </button>
-                ))}
+        {/* Standard emoji categories */}
+        {!isCustomTab &&
+          (search ? filteredCategories : [filteredCategories[activeCategory]]).map(
+            (cat) => (
+              <div key={cat.name}>
+                <p className="mb-1 px-1 text-xs font-semibold uppercase text-text-muted">
+                  {cat.name}
+                </p>
+                <div className="grid grid-cols-8 gap-0.5">
+                  {cat.emojis.map((emoji) => (
+                    <button
+                      key={emoji}
+                      onClick={() => {
+                        onSelect(emoji);
+                        onClose();
+                      }}
+                      className="flex h-8 w-8 items-center justify-center rounded hover:bg-bg-hover"
+                    >
+                      <Emoji emoji={emoji} size={22} />
+                    </button>
+                  ))}
+                </div>
               </div>
+            ),
+          )}
+
+        {/* Custom emojis (search results or dedicated tab) */}
+        {(isCustomTab || (search && filteredCustom.length > 0)) && (
+          <div>
+            <p className="mb-1 px-1 text-xs font-semibold uppercase text-text-muted">
+              Custom
+            </p>
+            <div className="grid grid-cols-8 gap-0.5">
+              {(search ? filteredCustom : customEmojis).map((emoji) => (
+                <button
+                  key={emoji.shortcode}
+                  onClick={() => {
+                    onSelect(`:${emoji.shortcode}:`);
+                    onClose();
+                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded hover:bg-bg-hover"
+                  title={`:${emoji.shortcode}:`}
+                >
+                  <CustomEmojiImage emoji={emoji} />
+                </button>
+              ))}
             </div>
-          )
+          </div>
         )}
       </div>
     </div>

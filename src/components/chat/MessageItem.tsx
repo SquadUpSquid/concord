@@ -10,6 +10,7 @@ import { EmojiPicker } from "./EmojiPicker";
 import { getMatrixClient } from "@/lib/matrix";
 import { fetchMediaBlob } from "@/utils/useMatrixImage";
 import { useState, useRef, useEffect, memo } from "react";
+import { Emoji } from "@/components/common/Emoji";
 
 interface MessageItemProps {
   message: Message;
@@ -65,6 +66,7 @@ function MessageBody({ message }: { message: Message }) {
         url={message.url ?? undefined}
         info={message.info ?? undefined}
         file={message.file}
+        roomId={message.roomId}
       />
       {message.isEdited && (
         <span className="text-[10px] text-text-muted">(edited)</span>
@@ -213,8 +215,9 @@ export const MessageItem = memo(function MessageItem({ message, showHeader }: Me
     }
   };
 
+  const pickerOpen = showQuickPicker || showFullPicker;
   const actionButtons = !message.isRedacted && (
-    <div className="absolute -top-3 right-4 hidden gap-0.5 rounded bg-bg-floating shadow group-hover:flex">
+    <div className={`absolute -top-3 right-4 gap-0.5 rounded bg-bg-floating shadow ${pickerOpen ? "flex" : "hidden group-hover:flex"}`}>
       {/* Thread — only show on non-thread messages */}
       {!message.threadRootId && (
         <button
@@ -299,15 +302,15 @@ export const MessageItem = memo(function MessageItem({ message, showHeader }: Me
           </svg>
         </button>
         {showQuickPicker && !showFullPicker && (
-          <div className="absolute bottom-full right-0 z-10 mb-1">
+          <div className="absolute bottom-full right-0 z-10 pb-1">
             <div className="flex items-center gap-1 rounded-lg bg-bg-floating p-1.5 shadow-lg">
               {QUICK_EMOJIS.map((emoji) => (
                 <button
                   key={emoji}
                   onClick={() => sendReaction(emoji)}
-                  className="rounded p-1 text-lg hover:bg-bg-hover"
+                  className="rounded p-1 hover:bg-bg-hover"
                 >
-                  {emoji}
+                  <Emoji emoji={emoji} size={20} />
                 </button>
               ))}
               <div className="mx-0.5 h-6 w-px bg-bg-active" />
@@ -325,13 +328,14 @@ export const MessageItem = memo(function MessageItem({ message, showHeader }: Me
           </div>
         )}
         {showFullPicker && (
-          <div className="absolute bottom-full right-0 z-10 mb-1">
+          <div className="absolute bottom-full right-0 z-10 pb-1">
             <EmojiPicker
               onSelect={sendReaction}
               onClose={() => {
                 setShowFullPicker(false);
                 setShowQuickPicker(false);
               }}
+              roomId={message.roomId}
             />
           </div>
         )}

@@ -4,6 +4,7 @@ import { useMessageStore } from "@/stores/messageStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { EmojiPicker } from "./EmojiPicker";
 import { searchEmojis, type EmojiEntry } from "@/lib/emojiData";
+import { Emoji } from "@/components/common/Emoji";
 
 interface MessageInputProps {
   roomId: string;
@@ -413,7 +414,7 @@ export function MessageInput({ roomId }: MessageInputProps) {
                 i === emojiSelectedIdx ? "bg-accent/20 text-text-primary" : "text-text-secondary hover:bg-bg-hover"
               }`}
             >
-              <span className="text-lg">{entry.emoji}</span>
+              <Emoji emoji={entry.emoji} size={20} />
               <span>:{entry.name}:</span>
             </button>
           ))}
@@ -512,6 +513,7 @@ export function MessageInput({ roomId }: MessageInputProps) {
               <EmojiPicker
                 onSelect={handleEmojiSelect}
                 onClose={() => setShowEmojiPicker(false)}
+                roomId={roomId}
               />
             </div>
           )}

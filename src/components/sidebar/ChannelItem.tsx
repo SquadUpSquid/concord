@@ -3,6 +3,7 @@ import { useCallStore, CallParticipant } from "@/stores/callStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useChannelPrefsStore } from "@/stores/channelPrefsStore";
 import { Avatar } from "@/components/common/Avatar";
+import { EmojiText } from "@/components/common/Emoji";
 import type { ChannelType } from "@/stores/roomStore";
 
 const EMPTY_PARTICIPANTS: CallParticipant[] = [];
@@ -113,7 +114,7 @@ export function ChannelItem({
       >
         {isVoice ? <VoiceChannelIcon active={isActiveVoice} /> : <TextChannelIcon />}
         <span className={`flex-1 truncate text-sm ${hasUnread && !isSelected ? "font-semibold" : ""}`}>
-          {name}
+          <EmojiText text={name} emojiSize={16} />
         </span>
         {isMuted && (
           <svg className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

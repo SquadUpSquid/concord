@@ -306,6 +306,28 @@ export async function fetchMediaBlob(
   }
 }
 
+/**
+ * Batch-prefetch avatar thumbnails into the blob cache so they resolve instantly
+ * when Avatar components mount. Fires up to `concurrency` fetches at once.
+ */
+export async function prefetchAvatars(
+  mxcUrls: string[],
+  width = 96,
+  height = 96,
+  concurrency = 10,
+): Promise<void> {
+  const unique = [...new Set(mxcUrls)].filter(
+    (url) => url && url.startsWith("mxc://") && !blobCache.has(url),
+  );
+
+  for (let i = 0; i < unique.length; i += concurrency) {
+    const batch = unique.slice(i, i + concurrency);
+    await Promise.allSettled(
+      batch.map((url) => fetchImageAsBlob(url, width, height)),
+    );
+  }
+}
+
 /** Evict a single entry from the blob cache (e.g. after avatar change). */
 export function evictImageCache(mxcUrl: string): void {
   const existing = blobCache.get(mxcUrl);

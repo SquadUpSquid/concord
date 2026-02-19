@@ -4,10 +4,54 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { useAuthStore } from "@/stores/authStore";
 import { useMatrixMedia, fetchMediaBlob } from "@/utils/useMatrixImage";
+import { useMatrixImage } from "@/utils/useMatrixImage";
 import { ImageLightbox } from "@/components/common/ImageLightbox";
+import { EmojiText } from "@/components/common/Emoji";
+import { useCustomEmojiStore } from "@/stores/customEmojiStore";
 import type { EncryptedFileInfo } from "@/stores/messageStore";
 
 const MENTION_REGEX = /@([a-zA-Z0-9._=-]+:[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+const CUSTOM_EMOJI_REGEX = /:([a-zA-Z0-9_]+):/g;
+
+function InlineCustomEmoji({ mxcUrl, shortcode }: { mxcUrl: string; shortcode: string }) {
+  const { src } = useMatrixImage(mxcUrl, 48, 48);
+  return (
+    <img
+      src={src ?? undefined}
+      alt={`:${shortcode}:`}
+      title={`:${shortcode}:`}
+      className="inline-block h-5 w-5 align-text-bottom object-contain"
+      draggable={false}
+    />
+  );
+}
+
+function replaceCustomEmojis(text: string, roomId: string | undefined, keyBase: number): ReactNode[] {
+  if (!roomId) return [text];
+  const resolveShortcode = useCustomEmojiStore.getState().resolveShortcode;
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  const regex = new RegExp(CUSTOM_EMOJI_REGEX.source, "g");
+  while ((match = regex.exec(text)) !== null) {
+    const shortcode = match[1];
+    const mxcUrl = resolveShortcode(roomId, shortcode);
+    if (mxcUrl) {
+      if (match.index > lastIndex) {
+        parts.push(text.slice(lastIndex, match.index));
+      }
+      parts.push(<InlineCustomEmoji key={`ce-${keyBase}-${match.index}`} mxcUrl={mxcUrl} shortcode={shortcode} />);
+      lastIndex = regex.lastIndex;
+    }
+  }
+
+  if (lastIndex === 0) return [text];
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts;
+}
 
 function highlightMentions(text: string, myUserId: string | null): ReactNode[] {
   const parts: ReactNode[] = [];
@@ -210,9 +254,10 @@ interface MessageContentProps {
   url?: string;
   info?: { mimetype?: string; size?: number; w?: number; h?: number };
   file?: EncryptedFileInfo | null;
+  roomId?: string;
 }
 
-export function MessageContent({ body, formattedBody: _formattedBody, msgtype, url, info, file }: MessageContentProps) {
+export function MessageContent({ body, formattedBody: _formattedBody, msgtype, url, info, file, roomId }: MessageContentProps) {
   if (msgtype === "m.image" && url) return <ImageMessage url={url} body={body} file={file} mimetype={info?.mimetype} />;
   if (msgtype === "m.video" && url) return <VideoMessage url={url} file={file} mimetype={info?.mimetype} />;
   if (msgtype === "m.audio" && url) return <AudioMessage url={url} file={file} mimetype={info?.mimetype} />;
@@ -229,12 +274,31 @@ export function MessageContent({ body, formattedBody: _formattedBody, msgtype, u
         rehypePlugins={[rehypeHighlight]}
         components={{
           p: ({ children }) => {
+            const processText = (text: string, keyBase: number): ReactNode[] => {
+              const mentionParts = highlightMentions(text, myUserId);
+              const result: ReactNode[] = [];
+              mentionParts.forEach((part, j) => {
+                if (typeof part === "string") {
+                  const customParts = replaceCustomEmojis(part, roomId, keyBase + j * 100);
+                  customParts.forEach((cp, k) => {
+                    if (typeof cp === "string") {
+                      result.push(<EmojiText key={`${keyBase}-${j}-${k}`} text={cp} emojiSize={20} />);
+                    } else {
+                      result.push(cp);
+                    }
+                  });
+                } else {
+                  result.push(part);
+                }
+              });
+              return result;
+            };
             const processed = Array.isArray(children)
               ? children.map((child, i) =>
-                  typeof child === "string" ? <span key={i}>{highlightMentions(child, myUserId)}</span> : child
+                  typeof child === "string" ? <span key={i}>{processText(child, i * 1000)}</span> : child
                 )
               : typeof children === "string"
-                ? highlightMentions(children, myUserId)
+                ? processText(children, 0)
                 : children;
             return <p className="mb-1 last:mb-0">{processed}</p>;
           },

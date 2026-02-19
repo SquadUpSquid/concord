@@ -8,6 +8,7 @@ import { getMatrixClient } from "@/lib/matrix";
 import { mxcToHttp } from "@/utils/matrixHelpers";
 import { PinnedMessages } from "./PinnedMessages";
 import { SearchPanel } from "./SearchPanel";
+import { EmojiText } from "@/components/common/Emoji";
 
 interface ChatHeaderProps {
   name: string;
@@ -90,7 +91,7 @@ export function ChatHeader({ name, topic, isDm, roomId }: ChatHeaderProps) {
       ) : (
         <>
           <span className="mr-1 text-text-muted">#</span>
-          <h3 className="font-semibold text-text-primary">{name}</h3>
+          <h3 className="font-semibold text-text-primary"><EmojiText text={name} emojiSize={18} /></h3>
           {topic && (
             <>
               <div className="mx-3 h-6 w-px bg-bg-active" />

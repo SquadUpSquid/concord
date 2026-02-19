@@ -128,6 +128,149 @@ export function useMatrixImage(
   return { src, loading };
 }
 
+function buildDownloadUrl(
+  mxcUrl: string,
+  homeserverUrl: string,
+): string {
+  const parts = mxcUrl.slice(6).split("/");
+  const [serverName, mediaId] = parts;
+  const hs = homeserverUrl.replace(/\/$/, "");
+  return `${hs}/_matrix/client/v1/media/download/${serverName}/${mediaId}`;
+}
+
+async function fetchMediaAsBlob(mxcUrl: string): Promise<string | null> {
+  const cacheKey = `dl:${mxcUrl}`;
+  const cached = blobCache.get(cacheKey);
+  if (cached) return cached;
+
+  const inflight = inflightRequests.get(cacheKey);
+  if (inflight) return inflight;
+
+  const promise = (async (): Promise<string | null> => {
+    try {
+      const client = getMatrixClient();
+      if (!client) return null;
+
+      const hs = client.getHomeserverUrl();
+      const token = client.getAccessToken();
+      const url = buildDownloadUrl(mxcUrl, hs);
+
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const res = await tauriFetch(url, { method: "GET", headers });
+
+      if (!res.ok) {
+        const parts = mxcUrl.slice(6).split("/");
+        const [serverName, mediaId] = parts;
+        const legacyUrl = `${hs.replace(/\/$/, "")}/_matrix/media/v3/download/${serverName}/${mediaId}`;
+        const legacyRes = await tauriFetch(legacyUrl, { method: "GET" });
+        if (!legacyRes.ok) return null;
+        const blob = await legacyRes.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        blobCache.set(cacheKey, blobUrl);
+        return blobUrl;
+      }
+
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      blobCache.set(cacheKey, blobUrl);
+      return blobUrl;
+    } catch (err) {
+      console.warn("[useMatrixMedia] Failed to fetch", mxcUrl, err);
+      return null;
+    } finally {
+      inflightRequests.delete(cacheKey);
+    }
+  })();
+
+  inflightRequests.set(cacheKey, promise);
+  return promise;
+}
+
+/**
+ * React hook that fetches full-size Matrix media via the Tauri HTTP plugin
+ * (with proper Authorization header) and returns a blob URL.
+ * Use for images in lightbox, video, audio, and file downloads.
+ */
+export function useMatrixMedia(
+  mxcUrl: string | null | undefined,
+): { src: string | null; loading: boolean } {
+  const cacheKey = mxcUrl ? `dl:${mxcUrl}` : null;
+  const [src, setSrc] = useState<string | null>(() =>
+    cacheKey ? blobCache.get(cacheKey) ?? null : null,
+  );
+  const [loading, setLoading] = useState(() =>
+    !!cacheKey && !blobCache.has(cacheKey),
+  );
+
+  useEffect(() => {
+    if (!mxcUrl || !mxcUrl.startsWith("mxc://")) {
+      setSrc(null);
+      setLoading(false);
+      return;
+    }
+
+    const key = `dl:${mxcUrl}`;
+    const cached = blobCache.get(key);
+    if (cached) {
+      setSrc(cached);
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+
+    fetchMediaAsBlob(mxcUrl).then((blobUrl) => {
+      if (!cancelled) {
+        setSrc(blobUrl);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mxcUrl]);
+
+  return { src, loading };
+}
+
+/**
+ * Non-hook function to fetch media as a blob (for downloads / save-to-disk).
+ * Returns the raw Blob, not a blob URL.
+ */
+export async function fetchMediaBlob(mxcUrl: string): Promise<Blob | null> {
+  try {
+    const client = getMatrixClient();
+    if (!client) return null;
+
+    const hs = client.getHomeserverUrl();
+    const token = client.getAccessToken();
+    const url = buildDownloadUrl(mxcUrl, hs);
+
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await tauriFetch(url, { method: "GET", headers });
+
+    if (!res.ok) {
+      const parts = mxcUrl.slice(6).split("/");
+      const [serverName, mediaId] = parts;
+      const legacyUrl = `${hs.replace(/\/$/, "")}/_matrix/media/v3/download/${serverName}/${mediaId}`;
+      const legacyRes = await tauriFetch(legacyUrl, { method: "GET" });
+      if (!legacyRes.ok) return null;
+      return await legacyRes.blob();
+    }
+
+    return await res.blob();
+  } catch (err) {
+    console.warn("[fetchMediaBlob] Failed to fetch", mxcUrl, err);
+    return null;
+  }
+}
+
 /** Evict a single entry from the blob cache (e.g. after avatar change). */
 export function evictImageCache(mxcUrl: string): void {
   const existing = blobCache.get(mxcUrl);

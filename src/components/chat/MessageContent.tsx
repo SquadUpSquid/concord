@@ -2,9 +2,8 @@ import { useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import { getMatrixClient } from "@/lib/matrix";
 import { useAuthStore } from "@/stores/authStore";
-import { mxcToHttp, mxcToFullUrl } from "@/utils/matrixHelpers";
+import { useMatrixImage, useMatrixMedia, fetchMediaBlob } from "@/utils/useMatrixImage";
 import { ImageLightbox } from "@/components/common/ImageLightbox";
 
 const MENTION_REGEX = /@([a-zA-Z0-9._=-]+:[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
@@ -43,6 +42,165 @@ function highlightMentions(text: string, myUserId: string | null): ReactNode[] {
   return parts.length > 0 ? parts : [text];
 }
 
+function ImageMessage({ url, body }: { url: string; body: string }) {
+  const [showLightbox, setShowLightbox] = useState(false);
+  const { src: thumbSrc, loading: thumbLoading } = useMatrixImage(url, 800, 600);
+  const { src: fullSrc } = useMatrixMedia(url);
+
+  return (
+    <div className="message-content my-1">
+      {showLightbox && (fullSrc || thumbSrc) && (
+        <ImageLightbox
+          src={fullSrc ?? thumbSrc!}
+          mxcUrl={url}
+          alt={body}
+          onClose={() => setShowLightbox(false)}
+        />
+      )}
+      <button onClick={() => setShowLightbox(true)} className="block">
+        {thumbLoading ? (
+          <div className="flex h-[200px] w-[300px] animate-pulse items-center justify-center rounded-lg bg-bg-secondary">
+            <svg className="h-8 w-8 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+          </div>
+        ) : thumbSrc ? (
+          <img
+            src={thumbSrc}
+            alt={body}
+            className="max-h-[300px] max-w-[400px] cursor-pointer rounded-lg object-contain transition-opacity hover:opacity-90"
+          />
+        ) : (
+          <div className="flex h-[100px] w-[200px] items-center justify-center rounded-lg bg-bg-secondary text-xs text-text-muted">
+            Image failed to load
+          </div>
+        )}
+      </button>
+      {body && !body.startsWith("image") && (
+        <p className="mt-1 text-xs text-text-muted">{body}</p>
+      )}
+    </div>
+  );
+}
+
+function VideoMessage({ url }: { url: string }) {
+  const { src, loading } = useMatrixMedia(url);
+
+  if (loading) {
+    return (
+      <div className="message-content my-1">
+        <div className="flex h-[200px] w-[350px] animate-pulse items-center justify-center rounded-lg bg-bg-secondary">
+          <svg className="h-10 w-10 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="message-content my-1">
+      {src ? (
+        <video src={src} controls className="max-h-[300px] max-w-[400px] rounded-lg" preload="metadata" />
+      ) : (
+        <div className="flex h-[60px] w-[300px] items-center justify-center rounded-lg bg-bg-secondary text-xs text-text-muted">
+          Video failed to load
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AudioMessage({ url }: { url: string }) {
+  const { src, loading } = useMatrixMedia(url);
+
+  if (loading) {
+    return (
+      <div className="message-content my-1">
+        <div className="h-[54px] w-[300px] animate-pulse rounded-full bg-bg-secondary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="message-content my-1">
+      {src ? (
+        <audio src={src} controls preload="metadata" className="max-w-[400px]" />
+      ) : (
+        <div className="flex h-[40px] w-[300px] items-center justify-center rounded-lg bg-bg-secondary text-xs text-text-muted">
+          Audio failed to load
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FileMessage({ url, body, info }: { url: string; body: string; info?: { mimetype?: string; size?: number; w?: number; h?: number } }) {
+  const [downloading, setDownloading] = useState(false);
+  const [done, setDone] = useState(false);
+  const sizeStr = info?.size ? formatFileSize(info.size) : "";
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    setDone(false);
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const { writeFile } = await import("@tauri-apps/plugin-fs");
+
+      const blob = await fetchMediaBlob(url);
+      if (!blob) throw new Error("Failed to fetch file");
+
+      const ext = body.includes(".") ? body.split(".").pop() : undefined;
+      const filePath = await save({
+        defaultPath: body,
+        filters: ext ? [{ name: "File", extensions: [ext] }] : undefined,
+      });
+      if (!filePath) return;
+
+      const arrayBuf = await blob.arrayBuffer();
+      await writeFile(filePath, new Uint8Array(arrayBuf));
+      setDone(true);
+      setTimeout(() => setDone(false), 2000);
+    } catch (err) {
+      console.error("Failed to save file:", err);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="message-content my-1">
+      <button
+        onClick={handleDownload}
+        disabled={downloading}
+        className="flex w-full items-center gap-2 rounded-lg bg-bg-secondary p-3 text-left transition-colors hover:bg-bg-active disabled:opacity-60"
+      >
+        <svg className="h-8 w-8 flex-shrink-0 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+        </svg>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-text-link">{body}</p>
+          {sizeStr && <p className="text-xs text-text-muted">{sizeStr}</p>}
+        </div>
+        {downloading ? (
+          <div className="h-5 w-5 flex-shrink-0 animate-spin rounded-full border-2 border-text-muted border-t-accent" />
+        ) : done ? (
+          <svg className="h-5 w-5 flex-shrink-0 text-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+        ) : (
+          <svg className="h-5 w-5 flex-shrink-0 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+          </svg>
+        )}
+      </button>
+    </div>
+  );
+}
+
 interface MessageContentProps {
   body: string;
   formattedBody: string | null;
@@ -52,91 +210,10 @@ interface MessageContentProps {
 }
 
 export function MessageContent({ body, formattedBody: _formattedBody, msgtype, url, info }: MessageContentProps) {
-  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-  const client = getMatrixClient();
-  const homeserverUrl = client?.getHomeserverUrl() ?? "";
-
-  // Image message
-  if (msgtype === "m.image" && url) {
-    const thumbUrl = mxcToHttp(url, homeserverUrl, 800, 600);
-    const fullUrl = mxcToFullUrl(url, homeserverUrl);
-    return (
-      <div className="message-content my-1">
-        {lightboxSrc && (
-          <ImageLightbox
-            src={lightboxSrc}
-            alt={body}
-            onClose={() => setLightboxSrc(null)}
-          />
-        )}
-        <button onClick={() => setLightboxSrc(fullUrl ?? thumbUrl ?? "")} className="block">
-          <img
-            src={thumbUrl ?? undefined}
-            alt={body}
-            className="max-h-[300px] max-w-[400px] cursor-pointer rounded-lg object-contain transition-opacity hover:opacity-90"
-            loading="lazy"
-          />
-        </button>
-        {body && !body.startsWith("image") && (
-          <p className="mt-1 text-xs text-text-muted">{body}</p>
-        )}
-      </div>
-    );
-  }
-
-  // Video message
-  if (msgtype === "m.video" && url) {
-    const fullUrl = mxcToFullUrl(url, homeserverUrl);
-    return (
-      <div className="message-content my-1">
-        <video
-          src={fullUrl ?? undefined}
-          controls
-          className="max-h-[300px] max-w-[400px] rounded-lg"
-          preload="metadata"
-        />
-      </div>
-    );
-  }
-
-  // Audio message
-  if (msgtype === "m.audio" && url) {
-    const fullUrl = mxcToFullUrl(url, homeserverUrl);
-    return (
-      <div className="message-content my-1">
-        <audio src={fullUrl ?? undefined} controls preload="metadata" className="max-w-[400px]" />
-      </div>
-    );
-  }
-
-  // File message
-  if (msgtype === "m.file" && url) {
-    const fullUrl = mxcToFullUrl(url, homeserverUrl);
-    const sizeStr = info?.size ? formatFileSize(info.size) : "";
-    return (
-      <div className="message-content my-1">
-        <a
-          href={fullUrl ?? undefined}
-          target="_blank"
-          rel="noopener noreferrer"
-          download
-          className="flex items-center gap-2 rounded-lg bg-bg-secondary p-3 transition-colors hover:bg-bg-active"
-        >
-          <svg className="h-8 w-8 flex-shrink-0 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-          </svg>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-text-link">{body}</p>
-            {sizeStr && <p className="text-xs text-text-muted">{sizeStr}</p>}
-          </div>
-          <svg className="h-5 w-5 flex-shrink-0 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
-          </svg>
-        </a>
-      </div>
-    );
-  }
+  if (msgtype === "m.image" && url) return <ImageMessage url={url} body={body} />;
+  if (msgtype === "m.video" && url) return <VideoMessage url={url} />;
+  if (msgtype === "m.audio" && url) return <AudioMessage url={url} />;
+  if (msgtype === "m.file" && url) return <FileMessage url={url} body={body} info={info} />;
 
   // Text message (default) — render as markdown
   const myUserId = useAuthStore.getState().userId;

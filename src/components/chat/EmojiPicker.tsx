@@ -103,9 +103,12 @@ export function EmojiPicker({ onSelect, onClose, roomId }: EmojiPickerProps) {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState(0);
 
-  const customEmojis = useCustomEmojiStore((s) =>
-    roomId ? s.getEmojisForRoom(roomId) : [],
-  );
+  const roomPacks = useCustomEmojiStore((s) => s.roomPacks);
+  const userPack = useCustomEmojiStore((s) => s.userPack);
+  const customEmojis = useMemo(() => {
+    if (!roomId) return [];
+    return useCustomEmojiStore.getState().getEmojisForRoom(roomId);
+  }, [roomId, roomPacks, userPack]);
   const hasCustom = customEmojis.length > 0;
 
   const filteredCategories = useMemo(() => {

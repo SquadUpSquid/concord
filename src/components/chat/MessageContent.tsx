@@ -5,6 +5,7 @@ import rehypeHighlight from "rehype-highlight";
 import { useAuthStore } from "@/stores/authStore";
 import { useMatrixMedia, fetchMediaBlob } from "@/utils/useMatrixImage";
 import { ImageLightbox } from "@/components/common/ImageLightbox";
+import { EmojiText } from "@/components/common/Emoji";
 import type { EncryptedFileInfo } from "@/stores/messageStore";
 
 const MENTION_REGEX = /@([a-zA-Z0-9._=-]+:[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
@@ -231,10 +232,14 @@ export function MessageContent({ body, formattedBody: _formattedBody, msgtype, u
           p: ({ children }) => {
             const processed = Array.isArray(children)
               ? children.map((child, i) =>
-                  typeof child === "string" ? <span key={i}>{highlightMentions(child, myUserId)}</span> : child
+                  typeof child === "string" ? <span key={i}>{highlightMentions(child, myUserId).map((part, j) =>
+                    typeof part === "string" ? <EmojiText key={j} text={part} emojiSize={20} /> : part
+                  )}</span> : child
                 )
               : typeof children === "string"
-                ? highlightMentions(children, myUserId)
+                ? highlightMentions(children, myUserId).map((part, j) =>
+                    typeof part === "string" ? <EmojiText key={j} text={part} emojiSize={20} /> : part
+                  )
                 : children;
             return <p className="mb-1 last:mb-0">{processed}</p>;
           },

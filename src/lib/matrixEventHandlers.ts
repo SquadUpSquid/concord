@@ -9,6 +9,7 @@ import { useCallStore, CallParticipant } from "@/stores/callStore";
 import { useCategoryStore } from "@/stores/categoryStore";
 import { mxcToHttp } from "@/utils/matrixHelpers";
 import { prefetchAvatars } from "@/utils/useMatrixImage";
+import { useCustomEmojiStore } from "@/stores/customEmojiStore";
 
 function mapEventToMessage(event: MatrixEvent, client: MatrixClient): Message {
   const sender = event.sender;
@@ -288,6 +289,13 @@ async function applySyncReady(client: MatrixClient, hasInitiallySyncedRef: { cur
     }
     if (mxcUrls.length > 0) {
       await prefetchAvatars(mxcUrls);
+    }
+
+    // Load custom emojis (MSC2545) for all rooms and user account data
+    const emojiStore = useCustomEmojiStore.getState();
+    emojiStore.loadUserEmojis();
+    for (const roomId of rooms.keys()) {
+      emojiStore.loadRoomEmojis(roomId);
     }
   }
 

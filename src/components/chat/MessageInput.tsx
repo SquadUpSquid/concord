@@ -513,6 +513,7 @@ export function MessageInput({ roomId }: MessageInputProps) {
               <EmojiPicker
                 onSelect={handleEmojiSelect}
                 onClose={() => setShowEmojiPicker(false)}
+                roomId={roomId}
               />
             </div>
           )}

@@ -333,6 +333,7 @@ export const MessageItem = memo(function MessageItem({ message, showHeader }: Me
                 setShowFullPicker(false);
                 setShowQuickPicker(false);
               }}
+              roomId={message.roomId}
             />
           </div>
         )}

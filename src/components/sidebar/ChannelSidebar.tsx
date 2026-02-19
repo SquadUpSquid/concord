@@ -13,6 +13,7 @@ import { ConnectedCallBar } from "@/components/voice/ConnectedCallBar";
 import { getMatrixClient } from "@/lib/matrix";
 import { mxcToHttp } from "@/utils/matrixHelpers";
 import { POWER_LEVEL_MODERATOR } from "@/utils/roles";
+import { EmojiText } from "@/components/common/Emoji";
 
 const CHANNEL_DND_TYPE = "application/x-concord-channel";
 const SECTION_DND_TYPE = "application/x-concord-section";
@@ -485,7 +486,7 @@ export function ChannelSidebar() {
                           className="flex-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted group-hover:text-text-secondary"
                           onDoubleClick={canManage && !isDefault ? () => { setRenamingCatId(sectionId); setRenameCatName(cat!.name); } : undefined}
                         >
-                          {sectionLabel}
+                          <EmojiText text={sectionLabel} emojiSize={14} />
                         </span>
                       )}
                     </button>

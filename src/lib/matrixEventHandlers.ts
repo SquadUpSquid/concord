@@ -8,6 +8,7 @@ import { usePresenceStore, PresenceStatus } from "@/stores/presenceStore";
 import { useCallStore, CallParticipant } from "@/stores/callStore";
 import { useCategoryStore } from "@/stores/categoryStore";
 import { mxcToHttp } from "@/utils/matrixHelpers";
+import { prefetchAvatars } from "@/utils/useMatrixImage";
 
 function mapEventToMessage(event: MatrixEvent, client: MatrixClient): Message {
   const sender = event.sender;
@@ -273,12 +274,24 @@ function updateReactionsForEvent(client: MatrixClient, roomId: string, eventId: 
   }
 }
 
-function applySyncReady(client: MatrixClient, hasInitiallySyncedRef: { current: boolean }) {
-  useRoomStore.getState().setSyncState("PREPARED");
-  if (!hasInitiallySyncedRef.current || useRoomStore.getState().rooms.size === 0) {
+async function applySyncReady(client: MatrixClient, hasInitiallySyncedRef: { current: boolean }) {
+  const isFirstSync = !hasInitiallySyncedRef.current || useRoomStore.getState().rooms.size === 0;
+
+  if (isFirstSync) {
     hasInitiallySyncedRef.current = true;
     syncRoomList(client);
+
+    const rooms = useRoomStore.getState().rooms;
+    const mxcUrls: string[] = [];
+    for (const room of rooms.values()) {
+      if (room.mxcAvatarUrl) mxcUrls.push(room.mxcAvatarUrl);
+    }
+    if (mxcUrls.length > 0) {
+      await prefetchAvatars(mxcUrls);
+    }
   }
+
+  useRoomStore.getState().setSyncState("PREPARED");
   updateTitleWithUnread();
 }
 

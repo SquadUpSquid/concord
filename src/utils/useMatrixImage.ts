@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { getMatrixClient } from "@/lib/matrix";
+import { decryptAttachment } from "@/utils/decryptAttachment";
+import type { EncryptedFileInfo } from "@/stores/messageStore";
 
 /**
  * Module-level cache: mxcUrl -> blob URL.
@@ -138,7 +140,36 @@ function buildDownloadUrl(
   return `${hs}/_matrix/client/v1/media/download/${serverName}/${mediaId}`;
 }
 
-async function fetchMediaAsBlob(mxcUrl: string): Promise<string | null> {
+async function downloadRawMedia(mxcUrl: string): Promise<ArrayBuffer | null> {
+  const client = getMatrixClient();
+  if (!client) return null;
+
+  const hs = client.getHomeserverUrl();
+  const token = client.getAccessToken();
+  const url = buildDownloadUrl(mxcUrl, hs);
+
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await tauriFetch(url, { method: "GET", headers });
+
+  if (!res.ok) {
+    const parts = mxcUrl.slice(6).split("/");
+    const [serverName, mediaId] = parts;
+    const legacyUrl = `${hs.replace(/\/$/, "")}/_matrix/media/v3/download/${serverName}/${mediaId}`;
+    const legacyRes = await tauriFetch(legacyUrl, { method: "GET" });
+    if (!legacyRes.ok) return null;
+    return await legacyRes.arrayBuffer();
+  }
+
+  return await res.arrayBuffer();
+}
+
+async function fetchMediaAsBlob(
+  mxcUrl: string,
+  fileInfo?: EncryptedFileInfo | null,
+  mimetype?: string,
+): Promise<string | null> {
   const cacheKey = `dl:${mxcUrl}`;
   const cached = blobCache.get(cacheKey);
   if (cached) return cached;
@@ -148,31 +179,19 @@ async function fetchMediaAsBlob(mxcUrl: string): Promise<string | null> {
 
   const promise = (async (): Promise<string | null> => {
     try {
-      const client = getMatrixClient();
-      if (!client) return null;
+      const raw = await downloadRawMedia(mxcUrl);
+      if (!raw) return null;
 
-      const hs = client.getHomeserverUrl();
-      const token = client.getAccessToken();
-      const url = buildDownloadUrl(mxcUrl, hs);
-
-      const headers: Record<string, string> = {};
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-
-      const res = await tauriFetch(url, { method: "GET", headers });
-
-      if (!res.ok) {
-        const parts = mxcUrl.slice(6).split("/");
-        const [serverName, mediaId] = parts;
-        const legacyUrl = `${hs.replace(/\/$/, "")}/_matrix/media/v3/download/${serverName}/${mediaId}`;
-        const legacyRes = await tauriFetch(legacyUrl, { method: "GET" });
-        if (!legacyRes.ok) return null;
-        const blob = await legacyRes.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        blobCache.set(cacheKey, blobUrl);
-        return blobUrl;
+      let data: ArrayBuffer | Blob;
+      if (fileInfo) {
+        data = await decryptAttachment(raw, fileInfo);
+      } else {
+        data = raw;
       }
 
-      const blob = await res.blob();
+      const blob = data instanceof Blob
+        ? data
+        : new Blob([data], mimetype ? { type: mimetype } : undefined);
       const blobUrl = URL.createObjectURL(blob);
       blobCache.set(cacheKey, blobUrl);
       return blobUrl;
@@ -191,10 +210,13 @@ async function fetchMediaAsBlob(mxcUrl: string): Promise<string | null> {
 /**
  * React hook that fetches full-size Matrix media via the Tauri HTTP plugin
  * (with proper Authorization header) and returns a blob URL.
+ * Supports encrypted attachments when fileInfo is provided.
  * Use for images in lightbox, video, audio, and file downloads.
  */
 export function useMatrixMedia(
   mxcUrl: string | null | undefined,
+  fileInfo?: EncryptedFileInfo | null,
+  mimetype?: string,
 ): { src: string | null; loading: boolean } {
   const cacheKey = mxcUrl ? `dl:${mxcUrl}` : null;
   const [src, setSrc] = useState<string | null>(() =>
@@ -222,7 +244,7 @@ export function useMatrixMedia(
     let cancelled = false;
     setLoading(true);
 
-    fetchMediaAsBlob(mxcUrl).then((blobUrl) => {
+    fetchMediaAsBlob(mxcUrl, fileInfo, mimetype).then((blobUrl) => {
       if (!cancelled) {
         setSrc(blobUrl);
         setLoading(false);
@@ -232,7 +254,7 @@ export function useMatrixMedia(
     return () => {
       cancelled = true;
     };
-  }, [mxcUrl]);
+  }, [mxcUrl, fileInfo, mimetype]);
 
   return { src, loading };
 }
@@ -240,31 +262,23 @@ export function useMatrixMedia(
 /**
  * Non-hook function to fetch media as a blob (for downloads / save-to-disk).
  * Returns the raw Blob, not a blob URL.
+ * Supports encrypted attachments when fileInfo is provided.
  */
-export async function fetchMediaBlob(mxcUrl: string): Promise<Blob | null> {
+export async function fetchMediaBlob(
+  mxcUrl: string,
+  fileInfo?: EncryptedFileInfo | null,
+  mimetype?: string,
+): Promise<Blob | null> {
   try {
-    const client = getMatrixClient();
-    if (!client) return null;
+    const raw = await downloadRawMedia(mxcUrl);
+    if (!raw) return null;
 
-    const hs = client.getHomeserverUrl();
-    const token = client.getAccessToken();
-    const url = buildDownloadUrl(mxcUrl, hs);
-
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-
-    const res = await tauriFetch(url, { method: "GET", headers });
-
-    if (!res.ok) {
-      const parts = mxcUrl.slice(6).split("/");
-      const [serverName, mediaId] = parts;
-      const legacyUrl = `${hs.replace(/\/$/, "")}/_matrix/media/v3/download/${serverName}/${mediaId}`;
-      const legacyRes = await tauriFetch(legacyUrl, { method: "GET" });
-      if (!legacyRes.ok) return null;
-      return await legacyRes.blob();
+    if (fileInfo) {
+      const decrypted = await decryptAttachment(raw, fileInfo);
+      return new Blob([decrypted], mimetype ? { type: mimetype } : undefined);
     }
 
-    return await res.blob();
+    return new Blob([raw]);
   } catch (err) {
     console.warn("[fetchMediaBlob] Failed to fetch", mxcUrl, err);
     return null;

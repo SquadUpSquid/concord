@@ -63,6 +63,7 @@ function MessageBody({ message }: { message: Message }) {
         msgtype={message.type}
         url={message.url ?? undefined}
         info={message.info ?? undefined}
+        file={message.file}
       />
       {message.isEdited && (
         <span className="text-[10px] text-text-muted">(edited)</span>

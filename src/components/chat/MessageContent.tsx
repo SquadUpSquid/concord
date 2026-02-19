@@ -5,6 +5,7 @@ import rehypeHighlight from "rehype-highlight";
 import { useAuthStore } from "@/stores/authStore";
 import { useMatrixImage, useMatrixMedia, fetchMediaBlob } from "@/utils/useMatrixImage";
 import { ImageLightbox } from "@/components/common/ImageLightbox";
+import type { EncryptedFileInfo } from "@/stores/messageStore";
 
 const MENTION_REGEX = /@([a-zA-Z0-9._=-]+:[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
 
@@ -42,10 +43,12 @@ function highlightMentions(text: string, myUserId: string | null): ReactNode[] {
   return parts.length > 0 ? parts : [text];
 }
 
-function ImageMessage({ url, body }: { url: string; body: string }) {
+function ImageMessage({ url, body, file, mimetype }: { url: string; body: string; file?: EncryptedFileInfo | null; mimetype?: string }) {
   const [showLightbox, setShowLightbox] = useState(false);
-  const { src: thumbSrc, loading: thumbLoading } = useMatrixImage(url, 800, 600);
-  const { src: fullSrc } = useMatrixMedia(url);
+  const { src: thumbSrc, loading: thumbLoading } = file
+    ? useMatrixMedia(url, file, mimetype)
+    : useMatrixImage(url, 800, 600);
+  const { src: fullSrc } = useMatrixMedia(url, file, mimetype);
 
   return (
     <div className="message-content my-1">
@@ -53,6 +56,8 @@ function ImageMessage({ url, body }: { url: string; body: string }) {
         <ImageLightbox
           src={fullSrc ?? thumbSrc!}
           mxcUrl={url}
+          file={file}
+          mimetype={mimetype}
           alt={body}
           onClose={() => setShowLightbox(false)}
         />
@@ -85,8 +90,8 @@ function ImageMessage({ url, body }: { url: string; body: string }) {
   );
 }
 
-function VideoMessage({ url }: { url: string }) {
-  const { src, loading } = useMatrixMedia(url);
+function VideoMessage({ url, file, mimetype }: { url: string; file?: EncryptedFileInfo | null; mimetype?: string }) {
+  const { src, loading } = useMatrixMedia(url, file, mimetype);
 
   if (loading) {
     return (
@@ -113,8 +118,8 @@ function VideoMessage({ url }: { url: string }) {
   );
 }
 
-function AudioMessage({ url }: { url: string }) {
-  const { src, loading } = useMatrixMedia(url);
+function AudioMessage({ url, file, mimetype }: { url: string; file?: EncryptedFileInfo | null; mimetype?: string }) {
+  const { src, loading } = useMatrixMedia(url, file, mimetype);
 
   if (loading) {
     return (
@@ -137,7 +142,7 @@ function AudioMessage({ url }: { url: string }) {
   );
 }
 
-function FileMessage({ url, body, info }: { url: string; body: string; info?: { mimetype?: string; size?: number; w?: number; h?: number } }) {
+function FileMessage({ url, body, info, file }: { url: string; body: string; info?: { mimetype?: string; size?: number; w?: number; h?: number }; file?: EncryptedFileInfo | null }) {
   const [downloading, setDownloading] = useState(false);
   const [done, setDone] = useState(false);
   const sizeStr = info?.size ? formatFileSize(info.size) : "";
@@ -149,7 +154,7 @@ function FileMessage({ url, body, info }: { url: string; body: string; info?: { 
       const { save } = await import("@tauri-apps/plugin-dialog");
       const { writeFile } = await import("@tauri-apps/plugin-fs");
 
-      const blob = await fetchMediaBlob(url);
+      const blob = await fetchMediaBlob(url, file, info?.mimetype);
       if (!blob) throw new Error("Failed to fetch file");
 
       const ext = body.includes(".") ? body.split(".").pop() : undefined;
@@ -207,13 +212,14 @@ interface MessageContentProps {
   msgtype?: string;
   url?: string;
   info?: { mimetype?: string; size?: number; w?: number; h?: number };
+  file?: EncryptedFileInfo | null;
 }
 
-export function MessageContent({ body, formattedBody: _formattedBody, msgtype, url, info }: MessageContentProps) {
-  if (msgtype === "m.image" && url) return <ImageMessage url={url} body={body} />;
-  if (msgtype === "m.video" && url) return <VideoMessage url={url} />;
-  if (msgtype === "m.audio" && url) return <AudioMessage url={url} />;
-  if (msgtype === "m.file" && url) return <FileMessage url={url} body={body} info={info} />;
+export function MessageContent({ body, formattedBody: _formattedBody, msgtype, url, info, file }: MessageContentProps) {
+  if (msgtype === "m.image" && url) return <ImageMessage url={url} body={body} file={file} mimetype={info?.mimetype} />;
+  if (msgtype === "m.video" && url) return <VideoMessage url={url} file={file} mimetype={info?.mimetype} />;
+  if (msgtype === "m.audio" && url) return <AudioMessage url={url} file={file} mimetype={info?.mimetype} />;
+  if (msgtype === "m.file" && url) return <FileMessage url={url} body={body} info={info} file={file} />;
 
   // Text message (default) — render as markdown
   const myUserId = useAuthStore.getState().userId;

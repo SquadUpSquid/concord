@@ -1,14 +1,17 @@
 import { useState, useEffect } from "react";
 import { fetchMediaBlob } from "@/utils/useMatrixImage";
+import type { EncryptedFileInfo } from "@/stores/messageStore";
 
 interface ImageLightboxProps {
   src: string;
   mxcUrl?: string;
+  file?: EncryptedFileInfo | null;
+  mimetype?: string;
   alt?: string;
   onClose: () => void;
 }
 
-export function ImageLightbox({ src, mxcUrl, alt, onClose }: ImageLightboxProps) {
+export function ImageLightbox({ src, mxcUrl, file, mimetype, alt, onClose }: ImageLightboxProps) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -28,7 +31,7 @@ export function ImageLightbox({ src, mxcUrl, alt, onClose }: ImageLightboxProps)
       const { writeFile } = await import("@tauri-apps/plugin-fs");
 
       const blob = mxcUrl
-        ? await fetchMediaBlob(mxcUrl)
+        ? await fetchMediaBlob(mxcUrl, file, mimetype)
         : await fetch(src).then((r) => r.blob());
 
       if (!blob) throw new Error("Failed to fetch image");

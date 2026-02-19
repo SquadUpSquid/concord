@@ -6,6 +6,14 @@ export interface Reaction {
   userIds: string[];
 }
 
+export interface EncryptedFileInfo {
+  url: string;
+  key: { alg: string; key_ops: string[]; kty: string; k: string; ext: boolean };
+  iv: string;
+  hashes: Record<string, string>;
+  v: string;
+}
+
 export interface Message {
   eventId: string;
   roomId: string;
@@ -25,6 +33,7 @@ export interface Message {
   reactions: Reaction[];
   url: string | null;
   info: { mimetype?: string; size?: number; w?: number; h?: number } | null;
+  file: EncryptedFileInfo | null;
   threadRootId: string | null;
   threadReplyCount: number;
   threadLastReplyTs: number | null;

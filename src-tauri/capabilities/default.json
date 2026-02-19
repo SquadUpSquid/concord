@@ -11,6 +11,16 @@
       "allow": [
         { "url": "https://**" }
       ]
+    },
+    "dialog:default",
+    {
+      "identifier": "fs:default",
+      "allow": [
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DESKTOP/**" },
+        { "path": "$HOME/**" }
+      ]
     }
   ]
 }

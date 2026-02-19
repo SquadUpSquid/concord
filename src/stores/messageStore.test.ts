@@ -21,6 +21,7 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
     reactions: [],
     url: null,
     info: null,
+    file: null,
     threadRootId: null,
     threadReplyCount: 0,
     threadLastReplyTs: null,

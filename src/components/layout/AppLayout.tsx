@@ -45,6 +45,7 @@ class SectionGuard extends Component<
 export function AppLayout() {
   const showMembers = useUiStore((s) => s.showMemberSidebar);
   const [showSwitcher, setShowSwitcher] = useState(false);
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -57,8 +58,15 @@ export function AppLayout() {
     return () => document.removeEventListener("keydown", handleKey);
   }, []);
 
+  useEffect(() => {
+    requestAnimationFrame(() => setVisible(true));
+  }, []);
+
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden">
+    <div
+      className="flex h-screen w-screen flex-col overflow-hidden transition-opacity duration-300"
+      style={{ opacity: visible ? 1 : 0 }}
+    >
       <SectionGuard name="TitleBar">
         <TitleBar />
       </SectionGuard>

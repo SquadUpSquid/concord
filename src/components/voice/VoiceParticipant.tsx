@@ -70,6 +70,7 @@ export function VoiceParticipant({ participant, isLocal = false }: VoiceParticip
           <Avatar
             name={participant.displayName}
             url={participant.avatarUrl}
+            mxcUrl={participant.mxcAvatarUrl}
             size={80}
           />
         </div>

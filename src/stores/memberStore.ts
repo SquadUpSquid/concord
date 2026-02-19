@@ -4,6 +4,7 @@ export interface Member {
   userId: string;
   displayName: string;
   avatarUrl: string | null;
+  mxcAvatarUrl: string | null;
   membership: string;
   powerLevel: number;
 }

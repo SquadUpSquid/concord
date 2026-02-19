@@ -12,6 +12,7 @@ export interface Message {
   senderId: string;
   senderName: string;
   senderAvatar: string | null;
+  senderMxcAvatar: string | null;
   body: string;
   formattedBody: string | null;
   timestamp: number;

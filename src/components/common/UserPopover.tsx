@@ -10,11 +10,12 @@ interface UserPopoverProps {
   userId: string;
   displayName: string;
   avatarUrl: string | null;
+  mxcAvatarUrl?: string | null;
   anchorEl: HTMLElement;
   onClose: () => void;
 }
 
-export function UserPopover({ userId, displayName, avatarUrl, anchorEl, onClose }: UserPopoverProps) {
+export function UserPopover({ userId, displayName, avatarUrl, mxcAvatarUrl, anchorEl, onClose }: UserPopoverProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const [starting, setStarting] = useState(false);
@@ -26,6 +27,7 @@ export function UserPopover({ userId, displayName, avatarUrl, anchorEl, onClose 
   const hsUrl = client?.getHomeserverUrl() ?? "";
   const user = client?.getUser(userId);
   const liveAvatarUrl = mxcToHttp(user?.avatarUrl, hsUrl);
+  const liveMxcAvatarUrl = user?.avatarUrl ?? mxcAvatarUrl ?? null;
   const liveName = user?.displayName ?? displayName;
 
   useEffect(() => {
@@ -123,6 +125,7 @@ export function UserPopover({ userId, displayName, avatarUrl, anchorEl, onClose 
           <Avatar
             name={liveName}
             url={liveAvatarUrl ?? avatarUrl}
+            mxcUrl={liveMxcAvatarUrl}
             size={64}
             presence={presence?.presence ?? null}
           />

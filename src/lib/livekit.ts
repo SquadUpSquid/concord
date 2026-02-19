@@ -213,6 +213,7 @@ function participantToCallParticipant(
     userId: identity,
     displayName: member?.name ?? p.name ?? identity,
     avatarUrl: member ? mxcToHttp(member.getMxcAvatarUrl(), homeserverUrl) : null,
+    mxcAvatarUrl: member?.getMxcAvatarUrl() ?? null,
     isSpeaking: p.isSpeaking,
     isAudioMuted: !p.isMicrophoneEnabled,
     isVideoMuted: !p.isCameraEnabled,

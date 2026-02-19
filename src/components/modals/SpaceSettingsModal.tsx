@@ -212,7 +212,7 @@ function OverviewTab({
       }
       if (avatarMxc) {
         await client.sendStateEvent(spaceId, "m.room.avatar" as any, { url: avatarMxc }, "");
-        updateRoom(spaceId, { avatarUrl: mxcToHttp(avatarMxc, homeserverUrl) });
+        updateRoom(spaceId, { avatarUrl: mxcToHttp(avatarMxc, homeserverUrl), mxcAvatarUrl: avatarMxc });
       }
       setSuccessMsg("Settings saved!");
       setTimeout(() => closeModal(), 600);
@@ -252,7 +252,7 @@ function OverviewTab({
       {/* Space avatar */}
       <div className="flex items-center gap-4">
         <div className="relative">
-          <Avatar name={space.name} url={displayAvatarUrl} size={64} />
+          <Avatar name={space.name} url={displayAvatarUrl} mxcUrl={avatarMxc ?? space.mxcAvatarUrl} size={64} />
           {uploadingAvatar && (
             <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -518,6 +518,7 @@ function MembersTab({ spaceId, userId }: { spaceId: string; userId: string | nul
               <Avatar
                 name={member.displayName}
                 url={member.avatarUrl}
+                mxcUrl={member.mxcAvatarUrl}
                 size={36}
               />
               <div className="min-w-0 flex-1">

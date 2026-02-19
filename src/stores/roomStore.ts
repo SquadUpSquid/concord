@@ -7,6 +7,7 @@ export interface RoomSummary {
   roomId: string;
   name: string;
   avatarUrl: string | null;
+  mxcAvatarUrl: string | null;
   topic: string | null;
   unreadCount: number;
   isSpace: boolean;

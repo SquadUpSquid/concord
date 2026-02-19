@@ -284,6 +284,7 @@ export function ChannelSidebar() {
   const avatarUrl = user && client
     ? mxcToHttp(user.avatarUrl ?? null, client.getHomeserverUrl())
     : null;
+  const mxcAvatarUrl = user?.avatarUrl ?? null;
 
   return (
     <div className="flex w-60 flex-col bg-bg-secondary">
@@ -594,6 +595,7 @@ export function ChannelSidebar() {
           <Avatar
             name={displayName}
             url={avatarUrl}
+            mxcUrl={mxcAvatarUrl}
             size={32}
             presence={myPresence}
           />

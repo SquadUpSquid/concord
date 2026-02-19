@@ -19,6 +19,7 @@ export function MemberItem({ member }: MemberItemProps) {
       <Avatar
         name={member.displayName}
         url={member.avatarUrl}
+        mxcUrl={member.mxcAvatarUrl}
         size={32}
         presence={presence}
       />

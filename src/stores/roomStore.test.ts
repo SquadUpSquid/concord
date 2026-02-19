@@ -6,6 +6,7 @@ function makeRoom(overrides: Partial<RoomSummary> = {}): RoomSummary {
     roomId: "!room1:matrix.org",
     name: "General",
     avatarUrl: null,
+    mxcAvatarUrl: null,
     topic: null,
     unreadCount: 0,
     isSpace: false,

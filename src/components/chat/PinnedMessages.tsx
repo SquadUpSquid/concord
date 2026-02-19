@@ -8,6 +8,7 @@ interface PinnedMessage {
   senderId: string;
   senderName: string;
   senderAvatar: string | null;
+  senderMxcAvatar: string | null;
   body: string;
   timestamp: number;
 }
@@ -48,6 +49,7 @@ export function PinnedMessages({ roomId, onClose }: PinnedMessagesProps) {
           senderId: event.getSender() ?? "",
           senderName: sender?.name ?? event.getSender() ?? "Unknown",
           senderAvatar: sender ? mxcToHttp(sender.getMxcAvatarUrl(), hsUrl) : null,
+          senderMxcAvatar: sender?.getMxcAvatarUrl() ?? null,
           body: event.getContent()?.body ?? "(no text)",
           timestamp: event.getTs(),
         });
@@ -80,7 +82,7 @@ export function PinnedMessages({ roomId, onClose }: PinnedMessagesProps) {
         {pinned.map((msg) => (
           <div key={msg.eventId} className="rounded-sm p-3 hover:bg-bg-hover">
             <div className="mb-1 flex items-center gap-2">
-              <Avatar name={msg.senderName} url={msg.senderAvatar} size={20} />
+              <Avatar name={msg.senderName} url={msg.senderAvatar} mxcUrl={msg.senderMxcAvatar} size={20} />
               <span className="text-xs font-medium text-text-primary">{msg.senderName}</span>
               <span className="text-[10px] text-text-muted">
                 {new Date(msg.timestamp).toLocaleDateString()}

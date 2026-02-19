@@ -31,6 +31,7 @@ export interface CallParticipant {
   userId: string;
   displayName: string;
   avatarUrl: string | null;
+  mxcAvatarUrl: string | null;
   isSpeaking: boolean;
   isAudioMuted: boolean;
   isVideoMuted: boolean;
@@ -162,6 +163,7 @@ function attachGroupCallListeners(
         userId: feed.userId,
         displayName: member?.name ?? feed.userId,
         avatarUrl: member ? mxcToHttp(member.getMxcAvatarUrl(), homeserverUrl) : null,
+        mxcAvatarUrl: member?.getMxcAvatarUrl() ?? null,
         isSpeaking: feed.isSpeaking(),
         isAudioMuted: feed.isAudioMuted(),
         isVideoMuted: feed.isVideoMuted(),

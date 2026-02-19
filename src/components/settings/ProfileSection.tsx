@@ -78,7 +78,7 @@ export function ProfileSection() {
           <div className="-mt-10 flex items-end gap-4">
             <div className="relative flex-shrink-0">
               <div className="rounded-full border-[5px] border-bg-secondary">
-                <Avatar name={displayName || "?"} url={avatarHttpUrl} size={80} />
+                <Avatar name={displayName || "?"} url={avatarHttpUrl} mxcUrl={avatarMxc} size={80} />
               </div>
               {uploadingAvatar && (
                 <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50">

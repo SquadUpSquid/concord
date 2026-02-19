@@ -93,6 +93,7 @@ function mapEventToMessage(event: MatrixEvent, client: MatrixClient): Message {
     senderId: event.getSender() ?? "",
     senderName: sender?.name ?? event.getSender() ?? "Unknown",
     senderAvatar: sender ? mxcToHttp(sender.getMxcAvatarUrl(), homeserverUrl) : null,
+    senderMxcAvatar: sender?.getMxcAvatarUrl() ?? null,
     body: isRedacted ? "" : (effectiveContent.body ?? ""),
     formattedBody: isRedacted ? null : (effectiveContent.formatted_body ?? null),
     timestamp: event.getTs(),
@@ -151,6 +152,7 @@ function buildRoomSummary(room: Room, client: MatrixClient): RoomSummary {
     roomId: room.roomId,
     name: room.name,
     avatarUrl: mxcToHttp(room.getMxcAvatarUrl(), client.getHomeserverUrl()),
+    mxcAvatarUrl: room.getMxcAvatarUrl() ?? null,
     topic:
       room.currentState
         .getStateEvents("m.room.topic", "")
@@ -233,6 +235,7 @@ export function syncRoomMembers(client: MatrixClient, roomId: string): void {
     userId: m.userId,
     displayName: m.name,
     avatarUrl: mxcToHttp(m.getMxcAvatarUrl(), client.getHomeserverUrl()),
+    mxcAvatarUrl: m.getMxcAvatarUrl() ?? null,
     membership: m.membership ?? "join",
     powerLevel: room.currentState.getStateEvents("m.room.power_levels", "")
       ?.getContent()?.users?.[m.userId] ?? 0,
@@ -366,6 +369,17 @@ export function registerEventHandlers(client: MatrixClient): void {
 
   client.on(RoomEvent.Name, (room) => {
     useRoomStore.getState().updateRoom(room.roomId, { name: room.name });
+  });
+
+  client.on(RoomStateEvent.Events, (event) => {
+    if (event.getType() !== "m.room.avatar") return;
+    const roomId = event.getRoomId();
+    if (!roomId) return;
+    const mxc: string | null = event.getContent()?.url ?? null;
+    useRoomStore.getState().updateRoom(roomId, {
+      avatarUrl: mxcToHttp(mxc, client.getHomeserverUrl()),
+      mxcAvatarUrl: mxc,
+    });
   });
 
   // New rooms appearing (join/invite from another client)
@@ -631,6 +645,7 @@ function scanVoiceParticipants(client: MatrixClient, roomId: string): void {
       userId,
       displayName: member.name ?? userId,
       avatarUrl: mxcToHttp(member.getMxcAvatarUrl(), homeserverUrl),
+      mxcAvatarUrl: member.getMxcAvatarUrl() ?? null,
       isSpeaking: false,
       isAudioMuted: false,
       isVideoMuted: true,

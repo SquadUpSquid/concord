@@ -24,26 +24,27 @@ function useOtherDmUser(roomId: string) {
   const client = getMatrixClient();
 
   return useMemo(() => {
-    if (!client) return { userId: null, displayName: null, avatarUrl: null };
+    if (!client) return { userId: null, displayName: null, avatarUrl: null, mxcAvatarUrl: null };
     const room = client.getRoom(roomId);
-    if (!room) return { userId: null, displayName: null, avatarUrl: null };
+    if (!room) return { userId: null, displayName: null, avatarUrl: null, mxcAvatarUrl: null };
 
     const members = room.getJoinedMembers();
     const other = members.find((m) => m.userId !== myUserId) ?? members[0];
-    if (!other) return { userId: null, displayName: null, avatarUrl: null };
+    if (!other) return { userId: null, displayName: null, avatarUrl: null, mxcAvatarUrl: null };
 
     const hs = client.getHomeserverUrl();
     return {
       userId: other.userId,
       displayName: other.name || other.userId,
       avatarUrl: mxcToHttp(other.getMxcAvatarUrl(), hs),
+      mxcAvatarUrl: other.getMxcAvatarUrl() ?? null,
     };
   }, [roomId, myUserId, client]);
 }
 
 export function DmItem({ roomId, name, unreadCount, isSelected, onClick }: DmItemProps) {
   const openContextMenu = useUiStore((s) => s.openContextMenu);
-  const { userId: otherUserId, displayName, avatarUrl } = useOtherDmUser(roomId);
+  const { userId: otherUserId, displayName, avatarUrl, mxcAvatarUrl } = useOtherDmUser(roomId);
 
   const presence: PresenceStatus = usePresenceStore(
     (s) => s.presenceByUser.get(otherUserId ?? "")?.presence ?? "offline"
@@ -93,6 +94,7 @@ export function DmItem({ roomId, name, unreadCount, isSelected, onClick }: DmIte
       <Avatar
         name={shownName}
         url={avatarUrl}
+        mxcUrl={mxcAvatarUrl}
         size={32}
         presence={presence}
       />

@@ -37,6 +37,7 @@ function VoiceParticipantEntry({ participant }: { participant: CallParticipant }
       <Avatar
         name={participant.displayName}
         url={participant.avatarUrl}
+        mxcUrl={participant.mxcAvatarUrl}
         size={20}
       />
       <span className="flex-1 truncate text-xs">

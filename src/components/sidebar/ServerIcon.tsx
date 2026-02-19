@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
+import { useMatrixImage } from "@/utils/useMatrixImage";
 
 interface ServerIconProps {
   name: string;
-  avatarUrl: string | null;
+  avatarUrl?: string | null;
+  mxcAvatarUrl?: string | null;
   isSelected: boolean;
   unreadCount: number;
   onClick: () => void;
@@ -24,16 +26,19 @@ function getColor(name: string): string {
 export function ServerIcon({
   name,
   avatarUrl,
+  mxcAvatarUrl,
   isSelected,
   unreadCount,
   onClick,
 }: ServerIconProps) {
   const [imgError, setImgError] = useState(false);
+  const { src: blobSrc, loading } = useMatrixImage(mxcAvatarUrl, 96, 96);
 
-  // Reset error state when URL changes
+  const effectiveUrl = blobSrc ?? avatarUrl ?? null;
+
   useEffect(() => {
     setImgError(false);
-  }, [avatarUrl]);
+  }, [effectiveUrl]);
 
   const initials = name
     .split(" ")
@@ -42,7 +47,7 @@ export function ServerIcon({
     .slice(0, 2)
     .toUpperCase();
 
-  const showImage = avatarUrl && !imgError;
+  const showImage = effectiveUrl && !imgError;
 
   return (
     <div className="group relative">
@@ -69,11 +74,13 @@ export function ServerIcon({
       >
         {showImage ? (
           <img
-            src={avatarUrl}
+            src={effectiveUrl}
             alt={name}
             className="h-full w-full object-cover"
             onError={() => setImgError(true)}
           />
+        ) : loading ? (
+          <span className="flex h-full w-full animate-pulse items-center justify-center bg-bg-secondary" />
         ) : (
           <span
             className="flex h-full w-full items-center justify-center text-sm font-medium text-white"

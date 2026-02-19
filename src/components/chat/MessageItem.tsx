@@ -215,8 +215,9 @@ export const MessageItem = memo(function MessageItem({ message, showHeader }: Me
     }
   };
 
+  const pickerOpen = showQuickPicker || showFullPicker;
   const actionButtons = !message.isRedacted && (
-    <div className="absolute -top-3 right-4 hidden gap-0.5 rounded bg-bg-floating shadow group-hover:flex">
+    <div className={`absolute -top-3 right-4 gap-0.5 rounded bg-bg-floating shadow ${pickerOpen ? "flex" : "hidden group-hover:flex"}`}>
       {/* Thread — only show on non-thread messages */}
       {!message.threadRootId && (
         <button
@@ -301,7 +302,7 @@ export const MessageItem = memo(function MessageItem({ message, showHeader }: Me
           </svg>
         </button>
         {showQuickPicker && !showFullPicker && (
-          <div className="absolute bottom-full right-0 z-10 mb-1">
+          <div className="absolute bottom-full right-0 z-10 pb-1">
             <div className="flex items-center gap-1 rounded-lg bg-bg-floating p-1.5 shadow-lg">
               {QUICK_EMOJIS.map((emoji) => (
                 <button
@@ -327,7 +328,7 @@ export const MessageItem = memo(function MessageItem({ message, showHeader }: Me
           </div>
         )}
         {showFullPicker && (
-          <div className="absolute bottom-full right-0 z-10 mb-1">
+          <div className="absolute bottom-full right-0 z-10 pb-1">
             <EmojiPicker
               onSelect={sendReaction}
               onClose={() => {

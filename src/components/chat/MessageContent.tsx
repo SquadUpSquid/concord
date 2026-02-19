@@ -46,19 +46,22 @@ function highlightMentions(text: string, myUserId: string | null): ReactNode[] {
 function ImageMessage({ url, body, file, mimetype }: { url: string; body: string; file?: EncryptedFileInfo | null; mimetype?: string }) {
   const [showLightbox, setShowLightbox] = useState(false);
   const isEncrypted = !!file;
-  // Always call both hooks unconditionally (React rules of hooks)
+  // Always call both hooks unconditionally (React rules of hooks).
+  // Thumbnail endpoint won't work for encrypted media (server can't thumbnail encrypted blobs).
   const thumbnail = useMatrixImage(isEncrypted ? undefined : url, 800, 600);
   const fullMedia = useMatrixMedia(url, file, mimetype);
 
-  const thumbSrc = isEncrypted ? fullMedia.src : thumbnail.src;
-  const thumbLoading = isEncrypted ? fullMedia.loading : thumbnail.loading;
-  const fullSrc = fullMedia.src;
+  // Use thumbnail if available, otherwise fall back to full download
+  const displaySrc = (isEncrypted ? fullMedia.src : thumbnail.src) ?? fullMedia.src;
+  const isLoading = isEncrypted
+    ? fullMedia.loading
+    : (thumbnail.loading || (!thumbnail.src && fullMedia.loading));
 
   return (
     <div className="message-content my-1">
-      {showLightbox && (fullSrc || thumbSrc) && (
+      {showLightbox && displaySrc && (
         <ImageLightbox
-          src={fullSrc ?? thumbSrc!}
+          src={displaySrc}
           mxcUrl={url}
           file={file}
           mimetype={mimetype}
@@ -67,7 +70,7 @@ function ImageMessage({ url, body, file, mimetype }: { url: string; body: string
         />
       )}
       <button onClick={() => setShowLightbox(true)} className="block">
-        {thumbLoading ? (
+        {isLoading ? (
           <div className="flex h-[200px] w-[300px] animate-pulse items-center justify-center rounded-lg bg-bg-secondary">
             <svg className="h-8 w-8 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -75,9 +78,9 @@ function ImageMessage({ url, body, file, mimetype }: { url: string; body: string
               <path d="M21 15l-5-5L5 21" />
             </svg>
           </div>
-        ) : thumbSrc ? (
+        ) : displaySrc ? (
           <img
-            src={thumbSrc}
+            src={displaySrc}
             alt={body}
             className="max-h-[300px] max-w-[400px] cursor-pointer rounded-lg object-contain transition-opacity hover:opacity-90"
           />

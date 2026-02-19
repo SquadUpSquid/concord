@@ -16,8 +16,9 @@ import {
   POWER_LEVEL_OWNER,
 } from "@/utils/roles";
 import { syncRoomMembers } from "@/lib/matrixEventHandlers";
+import { EmojiManagementTab } from "./EmojiManagementTab";
 
-type Tab = "overview" | "members";
+type Tab = "overview" | "members" | "emojis";
 
 export function SpaceSettingsModal() {
   const closeModal = useUiStore((s) => s.closeModal);
@@ -35,7 +36,7 @@ export function SpaceSettingsModal() {
       <div className="flex flex-col gap-0">
         {/* Tabs */}
         <div className="-mx-4 -mt-1 mb-4 flex border-b border-bg-active px-4">
-          {(["overview", "members"] as Tab[]).map((t) => (
+          {(["overview", "members", "emojis"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -55,6 +56,9 @@ export function SpaceSettingsModal() {
         )}
         {tab === "members" && (
           <MembersTab spaceId={selectedSpaceId!} userId={userId} />
+        )}
+        {tab === "emojis" && (
+          <EmojiManagementTab roomId={selectedSpaceId!} />
         )}
 
         {/* Danger zone */}

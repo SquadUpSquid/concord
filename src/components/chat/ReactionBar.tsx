@@ -1,5 +1,6 @@
 import { Reaction } from "@/stores/messageStore";
 import { getMatrixClient } from "@/lib/matrix";
+import { Emoji } from "@/components/common/Emoji";
 
 interface ReactionBarProps {
   reactions: Reaction[];
@@ -76,7 +77,7 @@ export function ReactionBar({ reactions, eventId, roomId }: ReactionBarProps) {
                 : "border-bg-active bg-bg-secondary text-text-muted hover:bg-bg-active"
             }`}
           >
-            <span>{r.key}</span>
+            <Emoji emoji={r.key} size={16} />
             <span>{r.count}</span>
           </button>
         );

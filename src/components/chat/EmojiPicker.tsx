@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { Emoji } from "@/components/common/Emoji";
 
 interface EmojiPickerProps {
   onSelect: (emoji: string) => void;
@@ -126,7 +127,7 @@ export function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
               }`}
               title={cat.name}
             >
-              {cat.emojis[0]}
+              <Emoji emoji={cat.emojis[0]} size={16} />
             </button>
           ))}
         </div>
@@ -148,9 +149,9 @@ export function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
                       onSelect(emoji);
                       onClose();
                     }}
-                    className="flex h-8 w-8 items-center justify-center rounded text-lg hover:bg-bg-hover"
+                    className="flex h-8 w-8 items-center justify-center rounded hover:bg-bg-hover"
                   >
-                    {emoji}
+                    <Emoji emoji={emoji} size={22} />
                   </button>
                 ))}
               </div>

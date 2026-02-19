@@ -10,6 +10,7 @@ import { EmojiPicker } from "./EmojiPicker";
 import { getMatrixClient } from "@/lib/matrix";
 import { fetchMediaBlob } from "@/utils/useMatrixImage";
 import { useState, useRef, useEffect, memo } from "react";
+import { Emoji } from "@/components/common/Emoji";
 
 interface MessageItemProps {
   message: Message;
@@ -305,9 +306,9 @@ export const MessageItem = memo(function MessageItem({ message, showHeader }: Me
                 <button
                   key={emoji}
                   onClick={() => sendReaction(emoji)}
-                  className="rounded p-1 text-lg hover:bg-bg-hover"
+                  className="rounded p-1 hover:bg-bg-hover"
                 >
-                  {emoji}
+                  <Emoji emoji={emoji} size={20} />
                 </button>
               ))}
               <div className="mx-0.5 h-6 w-px bg-bg-active" />

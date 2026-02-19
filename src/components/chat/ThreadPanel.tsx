@@ -144,6 +144,7 @@ export function ThreadPanel() {
                         url={msg.url ?? undefined}
                         info={msg.info ?? undefined}
                         file={msg.file}
+                        roomId={msg.roomId}
                       />
                     </div>
                     {threadMessages.length > 1 && (
@@ -176,6 +177,7 @@ export function ThreadPanel() {
                           url={msg.url ?? undefined}
                           info={msg.info ?? undefined}
                           file={msg.file}
+                          roomId={msg.roomId}
                         />
                       </div>
                     </div>
@@ -192,6 +194,7 @@ export function ThreadPanel() {
                         url={msg.url ?? undefined}
                         info={msg.info ?? undefined}
                         file={msg.file}
+                        roomId={msg.roomId}
                       />
                     </div>
                   </div>

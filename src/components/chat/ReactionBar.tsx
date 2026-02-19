@@ -1,6 +1,31 @@
 import { Reaction } from "@/stores/messageStore";
 import { getMatrixClient } from "@/lib/matrix";
 import { Emoji } from "@/components/common/Emoji";
+import { useCustomEmojiStore } from "@/stores/customEmojiStore";
+import { useMatrixImage } from "@/utils/useMatrixImage";
+
+function CustomReactionEmoji({ mxcUrl, shortcode }: { mxcUrl: string; shortcode: string }) {
+  const { src } = useMatrixImage(mxcUrl, 32, 32);
+  return (
+    <img
+      src={src ?? undefined}
+      alt={`:${shortcode}:`}
+      title={`:${shortcode}:`}
+      className="h-4 w-4 object-contain"
+      draggable={false}
+    />
+  );
+}
+
+function ReactionEmoji({ reactionKey, roomId }: { reactionKey: string; roomId: string }) {
+  const isCustom = reactionKey.startsWith(":") && reactionKey.endsWith(":") && reactionKey.length > 2;
+  if (isCustom) {
+    const shortcode = reactionKey.slice(1, -1);
+    const mxcUrl = useCustomEmojiStore.getState().resolveShortcode(roomId, shortcode);
+    if (mxcUrl) return <CustomReactionEmoji mxcUrl={mxcUrl} shortcode={shortcode} />;
+  }
+  return <Emoji emoji={reactionKey} size={16} />;
+}
 
 interface ReactionBarProps {
   reactions: Reaction[];
@@ -77,7 +102,7 @@ export function ReactionBar({ reactions, eventId, roomId }: ReactionBarProps) {
                 : "border-bg-active bg-bg-secondary text-text-muted hover:bg-bg-active"
             }`}
           >
-            <Emoji emoji={r.key} size={16} />
+            <ReactionEmoji reactionKey={r.key} roomId={roomId} />
             <span>{r.count}</span>
           </button>
         );

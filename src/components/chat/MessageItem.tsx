@@ -8,6 +8,7 @@ import { MessageContent } from "./MessageContent";
 import { ReactionBar } from "./ReactionBar";
 import { EmojiPicker } from "./EmojiPicker";
 import { getMatrixClient } from "@/lib/matrix";
+import { fetchMediaBlob } from "@/utils/useMatrixImage";
 import { useState, useRef, useEffect, memo } from "react";
 
 interface MessageItemProps {
@@ -108,6 +109,35 @@ export const MessageItem = memo(function MessageItem({ message, showHeader }: Me
   const myUserId = useAuthStore((s) => s.userId);
   const isOwnMessage = message.senderId === myUserId;
   const messageDisplay = useSettingsStore((s) => s.messageDisplay);
+  const hasMedia = !!message.url && ["m.image", "m.video", "m.audio", "m.file"].includes(message.type);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (!message.url) return;
+    setDownloading(true);
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const { writeFile } = await import("@tauri-apps/plugin-fs");
+
+      const blob = await fetchMediaBlob(message.url, message.file, message.info?.mimetype);
+      if (!blob) throw new Error("Failed to fetch media");
+
+      const fileName = message.body || "download";
+      const ext = fileName.includes(".") ? fileName.split(".").pop() : undefined;
+      const filePath = await save({
+        defaultPath: fileName,
+        filters: ext ? [{ name: "File", extensions: [ext] }] : undefined,
+      });
+      if (!filePath) return;
+
+      const arrayBuf = await blob.arrayBuffer();
+      await writeFile(filePath, new Uint8Array(arrayBuf));
+    } catch (err) {
+      console.error("Failed to download:", err);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   // Close full picker on click outside
   useEffect(() => {
@@ -206,6 +236,22 @@ export const MessageItem = memo(function MessageItem({ message, showHeader }: Me
           <path d="M9 17l-5-5 5-5M4 12h16" />
         </svg>
       </button>
+      {hasMedia && (
+        <button
+          onClick={handleDownload}
+          disabled={downloading}
+          className="rounded p-1.5 text-text-muted hover:bg-bg-hover hover:text-text-primary disabled:opacity-50"
+          title="Download"
+        >
+          {downloading ? (
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-text-muted border-t-accent" />
+          ) : (
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+            </svg>
+          )}
+        </button>
+      )}
       <button
         onClick={handlePin}
         className="rounded p-1.5 text-text-muted hover:bg-bg-hover hover:text-yellow"

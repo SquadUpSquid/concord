@@ -11,6 +11,7 @@ interface SearchResult {
   userId: string;
   displayName: string | null;
   avatarUrl: string | null;
+  mxcAvatarUrl: string | null;
 }
 
 export function CreateDmModal() {
@@ -43,6 +44,7 @@ export function CreateDmModal() {
           userId: u.user_id,
           displayName: u.display_name ?? null,
           avatarUrl: mxcToHttp(u.avatar_url, hsUrl),
+          mxcAvatarUrl: u.avatar_url ?? null,
         }))
       );
     } catch (err) {
@@ -169,6 +171,7 @@ export function CreateDmModal() {
               <Avatar
                 name={user.displayName ?? user.userId}
                 url={user.avatarUrl}
+                mxcUrl={user.mxcAvatarUrl}
                 size={36}
               />
               <div className="min-w-0 flex-1">

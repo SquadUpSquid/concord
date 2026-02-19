@@ -8,6 +8,7 @@ function makeMessage(overrides: Partial<Message> = {}): Message {
     senderId: "@user:matrix.org",
     senderName: "User",
     senderAvatar: null,
+    senderMxcAvatar: null,
     body: "Hello",
     formattedBody: null,
     timestamp: Date.now(),

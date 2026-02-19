@@ -188,6 +188,7 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
                     <Avatar
                       name={p.displayName}
                       url={p.avatarUrl}
+                      mxcUrl={p.mxcAvatarUrl}
                       size={48}
                     />
                     <span className="max-w-[80px] truncate text-xs text-text-secondary">

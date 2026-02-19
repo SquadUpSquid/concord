@@ -128,7 +128,7 @@ export function ThreadPanel() {
                 {isRoot && (
                   <div className="mb-3 rounded-lg bg-bg-secondary p-3">
                     <div className="mb-1 flex items-center gap-2">
-                      <Avatar name={msg.senderName} url={msg.senderAvatar} size={24} />
+                      <Avatar name={msg.senderName} url={msg.senderAvatar} mxcUrl={msg.senderMxcAvatar} size={24} />
                       <span className="text-sm font-medium text-text-primary">
                         {msg.senderName}
                       </span>
@@ -157,7 +157,7 @@ export function ThreadPanel() {
 
                 {!isRoot && showHeader && (
                   <div className="mt-3 flex gap-2 py-0.5">
-                    <Avatar name={msg.senderName} url={msg.senderAvatar} size={32} />
+                    <Avatar name={msg.senderName} url={msg.senderAvatar} mxcUrl={msg.senderMxcAvatar} size={32} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
                         <span className="text-sm font-medium text-text-primary">

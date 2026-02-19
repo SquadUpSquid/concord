@@ -47,6 +47,7 @@ export function ChatHeader({ name, topic, isDm, roomId }: ChatHeaderProps) {
       userId: other.userId,
       displayName: other.name || other.userId,
       avatarUrl: mxcToHttp(other.getMxcAvatarUrl(), client.getHomeserverUrl()),
+      mxcAvatarUrl: other.getMxcAvatarUrl() ?? null,
     };
   }, [isDm, roomId, myUserId]);
 
@@ -76,6 +77,7 @@ export function ChatHeader({ name, topic, isDm, roomId }: ChatHeaderProps) {
           <Avatar
             name={otherUser.displayName}
             url={otherUser.avatarUrl}
+            mxcUrl={otherUser.mxcAvatarUrl}
             size={24}
             presence={otherPresence}
           />

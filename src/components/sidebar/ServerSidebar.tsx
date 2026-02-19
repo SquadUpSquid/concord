@@ -82,6 +82,7 @@ export function ServerSidebar() {
           <ServerIcon
             name={space.name}
             avatarUrl={space.avatarUrl}
+            mxcAvatarUrl={space.mxcAvatarUrl}
             isSelected={selectedSpaceId === space.roomId}
             unreadCount={unreadCounts.get(space.roomId) ?? 0}
             onClick={() => selectSpace(space.roomId)}

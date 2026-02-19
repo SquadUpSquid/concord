@@ -119,7 +119,7 @@ export function QuickSwitcher({ onClose }: QuickSwitcherProps) {
                 i === selectedIndex ? "bg-accent/20 text-text-primary" : "text-text-secondary hover:bg-bg-hover"
               }`}
             >
-              <Avatar name={room.name} url={room.avatarUrl} size={28} />
+              <Avatar name={room.name} url={room.avatarUrl} mxcUrl={room.mxcAvatarUrl} size={28} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-text-muted">

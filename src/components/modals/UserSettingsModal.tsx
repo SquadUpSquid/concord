@@ -92,7 +92,7 @@ export function UserSettingsModal() {
         {/* Avatar section */}
         <div className="flex items-center gap-4">
           <div className="relative">
-            <Avatar name={displayName || "?"} url={avatarHttpUrl} size={80} />
+            <Avatar name={displayName || "?"} url={avatarHttpUrl} mxcUrl={avatarMxc} size={80} />
             {uploadingAvatar && (
               <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50">
                 <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/30 border-t-white" />

@@ -343,6 +343,7 @@ export const MessageItem = memo(function MessageItem({ message, showHeader }: Me
             userId={message.senderId}
             displayName={message.senderName}
             avatarUrl={message.senderAvatar}
+            mxcAvatarUrl={message.senderMxcAvatar}
             anchorEl={popoverAnchor}
             onClose={() => setPopoverAnchor(null)}
           />
@@ -364,6 +365,7 @@ export const MessageItem = memo(function MessageItem({ message, showHeader }: Me
           <Avatar
             name={message.senderName}
             url={message.senderAvatar}
+            mxcUrl={message.senderMxcAvatar}
             size={40}
           />
         </button>
@@ -389,6 +391,7 @@ export const MessageItem = memo(function MessageItem({ message, showHeader }: Me
             userId={message.senderId}
             displayName={message.senderName}
             avatarUrl={message.senderAvatar}
+            mxcAvatarUrl={message.senderMxcAvatar}
             anchorEl={popoverAnchor}
             onClose={() => setPopoverAnchor(null)}
           />

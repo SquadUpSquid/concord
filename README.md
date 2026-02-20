@@ -11,7 +11,7 @@
 <h1 align="center">Concord</h1>
 
 <p align="center">
-  <b>A Discord-like desktop client for <a href="https://matrix.org">Matrix</a></b><br>
+  <b>A familiar, modern desktop client for <a href="https://matrix.org">Matrix</a></b><br>
   Built with React, TypeScript, and Tauri
 </p>
 

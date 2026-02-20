@@ -37,7 +37,7 @@
       "icons/icon.ico"
     ],
     "publisher": "SquadUpSquid",
-    "category": "Communication",
+    "category": "public.app-category.social-networking",
     "shortDescription": "A familiar, modern desktop client for Matrix",
     "linux": {
       "deb": { "depends": [] },

@@ -2,28 +2,60 @@
   <img src="assets/concord-banner.png" alt="Concord" width="100%">
 </p>
 
-# Concord -- WORK IN PROGRESS NO OFFICIAL RELEASE
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License"></a>
+  <a href="https://github.com/SquadUpSquid/concord/issues"><img src="https://img.shields.io/github/issues/SquadUpSquid/concord.svg" alt="Issues"></a>
+  <a href="https://github.com/SquadUpSquid/concord/pulls"><img src="https://img.shields.io/github/issues-pr/SquadUpSquid/concord.svg" alt="Pull Requests"></a>
+</p>
 
-A Discord-like desktop client for [Matrix](https://matrix.org), built with React, TypeScript, and Tauri.
+<h1 align="center">Concord</h1>
 
-Concord aims to bring a familiar, modern chat experience to the Matrix ecosystem — spaces as servers, channels with text and voice, and a clean dark UI inspired by Discord.
+<p align="center">
+  <b>A Discord-like desktop client for <a href="https://matrix.org">Matrix</a></b><br>
+  Built with React, TypeScript, and Tauri
+</p>
+
+<p align="center"><i>Work in progress — no official release yet</i></p>
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Setup](#setup) — [Windows](#windows) | [macOS](#macos) | [Linux](#linux-debian--ubuntu)
+- [Getting Started](#getting-started)
+- [Building](#building)
+- [Testing](#testing)
+- [Project Structure](#project-structure)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
-- **Matrix Protocol** — Full Matrix client powered by [matrix-js-sdk](https://github.com/matrix-org/matrix-js-sdk) with end-to-end encryption (Rust crypto)
-- **Discord-style Layout** — Three-column UI: servers (spaces), channels, and chat
-- **Spaces & Channels** — Organize rooms into spaces with custom text and voice channel sections
-- **Rich Messaging** — Markdown (GFM), code syntax highlighting, replies, reactions, and emoji picker
-- **Voice & Video Chat** — LiveKit SFU integration for voice/video calls with mic, camera, screenshare, speaker detection, and participant grid (with legacy GroupCall fallback)
-- **Voice Channel Text Chat** — Toggleable, resizable text chat panel attached to voice channels
-- **Channel Organization** — Drag-and-drop reordering of channels and sections within spaces (admin/moderator only)
-- **Direct Messages** — Dedicated DM section separate from space channels
-- **Typing Indicators** — See who's typing in real time
-- **Presence** — Online, away, and offline status for all users
-- **Member Sidebar** — View room members with roles and presence
-- **Unread Tracking** — Badge counts on channels with unread messages
-- **Themes** — Multiple dark themes (default, green, orange, red, blue)
-- **Desktop App** — Native desktop experience via [Tauri](https://tauri.app) (lightweight, no Electron)
+**Core**
+- Full [Matrix](https://matrix.org) client with end-to-end encryption (Rust crypto via [matrix-js-sdk](https://github.com/matrix-org/matrix-js-sdk))
+- Discord-style three-column layout: servers (spaces), channels, and chat
+- Spaces and channels with custom text and voice channel sections
+- Direct messages in a dedicated section separate from spaces
+
+**Messaging**
+- Markdown (GFM) with code syntax highlighting
+- Replies, reactions, and emoji picker
+- Typing indicators and real-time presence (online, away, offline)
+- Unread badges on channels with new messages
+
+**Voice & Video**
+- [LiveKit](https://livekit.io) SFU integration for voice and video calls
+- Mic, camera, screenshare, speaker detection, and participant grid
+- Toggleable, resizable text chat panel in voice channels
+- Legacy GroupCall fallback
+
+**Organization & Customization**
+- Drag-and-drop channel and section reordering (admin/moderator)
+- Member sidebar with roles and presence
+- Multiple dark themes (default, green, orange, red, blue)
+- Native desktop experience via [Tauri](https://tauri.app) — lightweight, no Electron
 
 ## Tech Stack
 
@@ -35,7 +67,8 @@ Concord aims to bring a familiar, modern chat experience to the Matrix ecosystem
 | Styling | [Tailwind CSS 4](https://tailwindcss.com) |
 | State | [Zustand](https://zustand.docs.pmnd.rs) |
 | Matrix | [matrix-js-sdk](https://github.com/matrix-org/matrix-js-sdk) with Rust crypto (WASM) |
-| Testing | [Vitest](https://vitest.dev) + Testing Library |
+| Voice/Video | [LiveKit Client SDK](https://docs.livekit.io) |
+| Testing | [Vitest](https://vitest.dev) + [Testing Library](https://testing-library.com) |
 
 ## Setup
 
@@ -221,27 +254,23 @@ npm run dev
 ## Building
 
 ```bash
-# Build the production desktop app
 npm run tauri build
 ```
 
-The built application will be in `src-tauri/target/release/bundle/`.
+The output will be in `src-tauri/target/release/bundle/`.
 
 ## Testing
 
 ```bash
-# Run the test suite
-npm test
-
-# Run tests in watch mode
-npm run test:watch
+npm test              # Run the test suite
+npm run test:watch    # Run tests in watch mode
 ```
 
 ## Project Structure
 
 ```
 concord/
-├── src/                        # Frontend source
+├── src/                        # React frontend
 │   ├── components/
 │   │   ├── chat/               # Message list, input, header, reactions
 │   │   ├── common/             # Avatar, Modal, LoadingSpinner, ErrorBoundary
@@ -249,14 +278,16 @@ concord/
 │   │   ├── members/            # Member sidebar
 │   │   ├── modals/             # Create room/space, settings, leave room
 │   │   ├── sidebar/            # Server sidebar, channel list, context menu
-│   │   └── voice/              # Voice channel view, controls, participant tiles
+│   │   └── voice/              # Voice channel UI, controls, participant tiles
+│   ├── hooks/                  # Custom React hooks
 │   ├── lib/                    # Matrix client init & event handlers
 │   ├── pages/                  # LoginPage, MainPage
-│   ├── stores/                 # Zustand stores (auth, rooms, messages, calls, etc.)
+│   ├── stores/                 # Zustand stores (auth, rooms, messages, calls …)
+│   ├── types/                  # TypeScript type definitions
 │   └── utils/                  # Helpers & formatters
 ├── src-tauri/                  # Tauri / Rust backend
 │   ├── src/
-│   │   ├── lib.rs              # App setup (plugins, permission handling)
+│   │   ├── lib.rs              # App setup, plugins, permissions
 │   │   └── main.rs             # Entry point
 │   ├── Cargo.toml
 │   └── tauri.conf.json
@@ -268,14 +299,16 @@ concord/
 
 ## Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for coding standards, branch naming, and the full workflow.
 
-1. Fork the repo
+**Quick version:**
+
+1. Fork the repo and clone your fork
 2. Create a feature branch (`git checkout -b feature/my-feature`)
 3. Make your changes and add tests where appropriate
-4. Run `npm test` to ensure everything passes
-5. Commit and push, then open a PR
-6. Sign the [CLA](CLA.md) when prompted by the bot on your PR
+4. Run `npm test` and `npx tsc --noEmit` to verify
+5. Commit, push, and open a PR against `main`
+6. Sign the [CLA](CLA.md) when prompted by the bot (first-time only)
 
 ## License
 

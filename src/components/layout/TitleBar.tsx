@@ -1,4 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import type { MouseEvent } from "react";
 
 const appWindow = getCurrentWindow();
 
@@ -9,16 +10,29 @@ export function TitleBar() {
     });
   };
 
+  const handleDragStart = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    appWindow.startDragging().catch((err) => {
+      console.error("[titlebar] Failed to start dragging:", err);
+    });
+  };
+
   return (
-    <div className="flex h-8 w-full items-center bg-bg-tertiary">
+    <div
+      className="flex h-8 w-full items-center bg-bg-tertiary"
+      onMouseDown={handleDragStart}
+    >
       <div
-        data-tauri-drag-region
         className="flex flex-1 items-center pl-3 text-xs font-semibold text-text-muted"
       >
         Concord
       </div>
 
-      <div className="flex" aria-label="Window controls">
+      <div
+        className="flex"
+        aria-label="Window controls"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <button
           onClick={() => runWindowAction("minimize")}
           className="inline-flex h-8 w-12 items-center justify-center text-text-muted hover:bg-bg-hover hover:text-text-primary"

@@ -25,5 +25,35 @@
     "security": {
       "csp": "default-src 'self'; connect-src 'self' https://* wss://*; img-src 'self' https://* data: blob:; media-src 'self' blob: mediastream:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'"
     }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "publisher": "SquadUpSquid",
+    "category": "Communication",
+    "shortDescription": "A familiar, modern desktop client for Matrix",
+    "linux": {
+      "deb": { "depends": [] },
+      "appimage": { "bundleMediaFramework": true }
+    },
+    "windows": {
+      "nsis": { "installerMode": "currentUser" }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/SquadUpSquid/concord/releases/latest/download/latest.json"
+      ],
+      "pubkey": "YOUR_PUBKEY_HERE",
+      "dialog": true
+    }
   }
 }

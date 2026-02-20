@@ -17,6 +17,8 @@
       ]
     },
     "dialog:default",
+    "updater:default",
+    "process:default",
     {
       "identifier": "fs:default",
       "allow": [

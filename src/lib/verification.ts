@@ -48,13 +48,25 @@ export async function requestOwnUserVerification(
   }
 }
 
+/** Stored handler reference so we can remove it on cleanup. */
+let _verificationHandler: ((r: unknown) => void) | null = null;
+
 /**
  * Subscribe to crypto verification events and push incoming requests into the store.
  * Call once after the client is ready (e.g. from registerEventHandlers or matrix init).
+ * Returns a cleanup function that removes the listener.
  */
-export function subscribeVerificationEvents(client: MatrixClient): void {
+export function subscribeVerificationEvents(client: MatrixClient): () => void {
   const crypto = client.getCrypto();
-  if (!crypto) return;
+  if (!crypto) return () => {};
+
+  // Remove previous listener if any (e.g. same client re-registered)
+  if (_verificationHandler) {
+    (client as { off(event: string, fn: (r: unknown) => void): void }).off(
+      VERIFICATION_REQUEST_RECEIVED,
+      _verificationHandler
+    );
+  }
 
   const handleVerificationRequestReceived = (
     request: import("matrix-js-sdk/lib/crypto-api/verification").VerificationRequest
@@ -62,8 +74,20 @@ export function subscribeVerificationEvents(client: MatrixClient): void {
     useVerificationStore.getState().addIncomingRequest(request);
   };
 
+  _verificationHandler = handleVerificationRequestReceived as (r: unknown) => void;
+
   (client as { on(event: string, fn: (r: unknown) => void): void }).on(
     VERIFICATION_REQUEST_RECEIVED,
-    handleVerificationRequestReceived as (r: unknown) => void
+    _verificationHandler
   );
+
+  return () => {
+    if (_verificationHandler) {
+      (client as { off(event: string, fn: (r: unknown) => void): void }).off(
+        VERIFICATION_REQUEST_RECEIVED,
+        _verificationHandler
+      );
+      _verificationHandler = null;
+    }
+  };
 }

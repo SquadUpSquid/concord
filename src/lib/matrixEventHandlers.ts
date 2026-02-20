@@ -304,7 +304,12 @@ async function applySyncReady(client: MatrixClient, hasInitiallySyncedRef: { cur
   updateTitleWithUnread();
 
   if (isFirstSync) {
-    checkCurrentDeviceVerified(client).catch(() => {});
+    // Defer the WASM crypto call so the UI is fully stable before querying
+    // the Rust OLM machine. Calling immediately during sync can crash the
+    // WebView on some platforms (e.g. WSL).
+    setTimeout(() => {
+      checkCurrentDeviceVerified(client).catch(() => {});
+    }, 3_000);
   }
 }
 

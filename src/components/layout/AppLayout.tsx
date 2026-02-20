@@ -8,6 +8,8 @@ import { useUiStore } from "@/stores/uiStore";
 import { ModalRoot } from "@/components/modals/ModalRoot";
 import { RoomContextMenu } from "@/components/sidebar/RoomContextMenu";
 import { QuickSwitcher } from "@/components/common/QuickSwitcher";
+import { SessionVerificationBanner } from "@/components/verification/SessionVerificationBanner";
+import { VerificationFlowModal } from "@/components/verification/VerificationFlowModal";
 
 /**
  * Lightweight error boundary that silently swallows render errors in a
@@ -70,6 +72,9 @@ export function AppLayout() {
       <SectionGuard name="TitleBar">
         <TitleBar />
       </SectionGuard>
+      <SectionGuard name="VerificationBanner">
+        <SessionVerificationBanner />
+      </SectionGuard>
       <div className="flex flex-1 overflow-hidden">
         <SectionGuard name="ServerSidebar">
           <ServerSidebar />
@@ -88,6 +93,7 @@ export function AppLayout() {
       </div>
       <SectionGuard name="Modals">
         <ModalRoot />
+        <VerificationFlowModal />
       </SectionGuard>
       <RoomContextMenu />
       {showSwitcher && <QuickSwitcher onClose={() => setShowSwitcher(false)} />}

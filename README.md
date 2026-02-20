@@ -37,19 +37,129 @@ Concord aims to bring a familiar, modern chat experience to the Matrix ecosystem
 | Matrix | [matrix-js-sdk](https://github.com/matrix-org/matrix-js-sdk) with Rust crypto (WASM) |
 | Testing | [Vitest](https://vitest.dev) + Testing Library |
 
-## Prerequisites
+## Setup
 
-- [Git](https://git-scm.com/)
-- [Node.js](https://nodejs.org) >= 20 (LTS recommended)
-- `npm` (installed with Node.js)
-- [Rust](https://rustup.rs) toolchain (`rustc` + `cargo`, Rust >= 1.75)
-- Tauri system dependencies (see below)
+Every platform needs **Git**, **Node.js >= 20**, and the **Rust toolchain**. Beyond that, each OS has its own system dependencies for Tauri. Pick your platform below and follow every step.
 
-### Install Rust (required for Tauri)
+---
 
-If `cargo` is missing, Tauri commands fail with errors like `failed to run 'cargo metadata'`.
+### Windows
 
-#### Linux / macOS
+<details>
+<summary><b>Click to expand Windows setup</b></summary>
+
+#### 1. Install Git
+
+Download and install from [git-scm.com](https://git-scm.com/download/win).
+
+#### 2. Install Node.js
+
+Download the **LTS** installer (>= 20) from [nodejs.org](https://nodejs.org). This includes `npm`.
+
+#### 3. Install Rust
+
+Download and run the installer from [rustup.rs](https://rustup.rs). When prompted, choose the default installation.
+
+After the installer finishes, **open a new terminal** and run:
+
+```powershell
+rustup default stable
+```
+
+#### 4. Install Tauri system dependencies
+
+- Install [Microsoft Visual Studio C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
+  - In the installer, select the **"Desktop development with C++"** workload.
+- Install [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (pre-installed on Windows 10 1803+ and Windows 11).
+
+For the full breakdown see the [Tauri v2 prerequisites guide](https://v2.tauri.app/start/prerequisites/).
+
+#### 5. Verify everything
+
+Open a **new** terminal (PowerShell or CMD) and run:
+
+```powershell
+git --version
+node -v          # Should be >= 20
+npm -v
+rustc --version  # Should be >= 1.75
+cargo --version
+```
+
+If any command is not recognized, revisit the corresponding step above.
+
+</details>
+
+---
+
+### macOS
+
+<details>
+<summary><b>Click to expand macOS setup</b></summary>
+
+#### 1. Install Xcode Command Line Tools
+
+```bash
+xcode-select --install
+```
+
+This gives you Git, a C compiler, and other build essentials.
+
+#### 2. Install Node.js
+
+Use [nvm](https://github.com/nvm-sh/nvm) (recommended) or download the LTS installer from [nodejs.org](https://nodejs.org).
+
+```bash
+# With nvm (after installing it):
+nvm install 20
+nvm use 20
+```
+
+#### 3. Install Rust
+
+```bash
+curl https://sh.rustup.rs -sSf | sh
+```
+
+Follow the on-screen prompts (defaults are fine). Then load it into your current shell:
+
+```bash
+source "$HOME/.cargo/env"
+rustup default stable
+```
+
+#### 4. Verify everything
+
+```bash
+git --version
+node -v          # Should be >= 20
+npm -v
+rustc --version  # Should be >= 1.75
+cargo --version
+```
+
+If any command is not recognized, revisit the corresponding step above.
+
+</details>
+
+---
+
+### Linux (Debian / Ubuntu)
+
+<details>
+<summary><b>Click to expand Linux setup</b></summary>
+
+#### 1. Install Node.js
+
+Use [nvm](https://github.com/nvm-sh/nvm) (recommended) or your distro's package manager. Most distro repos ship an outdated Node, so nvm is safest:
+
+```bash
+# With nvm (after installing it):
+nvm install 20
+nvm use 20
+```
+
+#### 2. Install Rust
 
 ```bash
 curl https://sh.rustup.rs -sSf | sh
@@ -57,16 +167,7 @@ source "$HOME/.cargo/env"
 rustup default stable
 ```
 
-#### Windows
-
-Install Rust with rustup: https://rustup.rs  
-Then open a new terminal and run:
-
-```powershell
-rustup default stable
-```
-
-### Linux (Debian/Ubuntu)
+#### 3. Install Tauri system dependencies
 
 ```bash
 sudo apt update
@@ -76,32 +177,27 @@ sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
   gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-nice
 ```
 
-> **Note:** Voice/video calls require WebRTC support. Ubuntu/Debian ship WebKitGTK without WebRTC enabled at build time. Voice calls work fully on **Windows** and **macOS**. On Linux, a custom WebKitGTK build with `-DENABLE_WEB_RTC=ON` is required for voice — see [this discussion](https://github.com/tauri-apps/tauri/discussions/8426) for details.
+> **Heads-up — Voice/Video on Linux:** Ubuntu and Debian ship WebKitGTK without WebRTC enabled. Voice and video calls work fully on **Windows** and **macOS**. On Linux you need a custom WebKitGTK build with `-DENABLE_WEB_RTC=ON` — see [this Tauri discussion](https://github.com/tauri-apps/tauri/discussions/8426) for details. Everything else (text chat, spaces, DMs, etc.) works fine.
 
-### macOS
-
-```bash
-xcode-select --install
-```
-
-### Windows
-
-Install [Microsoft Visual Studio C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
-
-For full details, see the [Tauri prerequisites guide](https://v2.tauri.app/start/prerequisites/).
-
-### Verify your toolchain
-
-Before running the app, confirm the required tools are installed:
+#### 4. Verify everything
 
 ```bash
-node -v
+git --version
+node -v          # Should be >= 20
 npm -v
-rustc --version
+rustc --version  # Should be >= 1.75
 cargo --version
 ```
 
+If any command is not recognized, revisit the corresponding step above.
+
+</details>
+
+---
+
 ## Getting Started
+
+Once your platform setup is complete:
 
 ```bash
 # Clone the repo
@@ -111,14 +207,11 @@ cd concord
 # Install frontend dependencies
 npm install
 
-# Optional sanity check: run from the repo root
-cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 --no-deps
-
-# Run in development mode (opens Tauri window)
+# Launch the desktop app (first run compiles the Rust backend — this takes a few minutes)
 npm run tauri dev
 ```
 
-To run just the frontend in a browser (without Tauri):
+To run **just the web frontend** in a browser (no Tauri / no Rust required):
 
 ```bash
 npm run dev

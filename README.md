@@ -39,9 +39,32 @@ Concord aims to bring a familiar, modern chat experience to the Matrix ecosystem
 
 ## Prerequisites
 
+- [Git](https://git-scm.com/)
 - [Node.js](https://nodejs.org) >= 20 (LTS recommended)
-- [Rust](https://rustup.rs) >= 1.75
+- `npm` (installed with Node.js)
+- [Rust](https://rustup.rs) toolchain (`rustc` + `cargo`, Rust >= 1.75)
 - Tauri system dependencies (see below)
+
+### Install Rust (required for Tauri)
+
+If `cargo` is missing, Tauri commands fail with errors like `failed to run 'cargo metadata'`.
+
+#### Linux / macOS
+
+```bash
+curl https://sh.rustup.rs -sSf | sh
+source "$HOME/.cargo/env"
+rustup default stable
+```
+
+#### Windows
+
+Install Rust with rustup: https://rustup.rs  
+Then open a new terminal and run:
+
+```powershell
+rustup default stable
+```
 
 ### Linux (Debian/Ubuntu)
 
@@ -67,6 +90,17 @@ Install [Microsoft Visual Studio C++ Build Tools](https://visualstudio.microsoft
 
 For full details, see the [Tauri prerequisites guide](https://v2.tauri.app/start/prerequisites/).
 
+### Verify your toolchain
+
+Before running the app, confirm the required tools are installed:
+
+```bash
+node -v
+npm -v
+rustc --version
+cargo --version
+```
+
 ## Getting Started
 
 ```bash
@@ -76,6 +110,9 @@ cd concord
 
 # Install frontend dependencies
 npm install
+
+# Optional sanity check: run from the repo root
+cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 --no-deps
 
 # Run in development mode (opens Tauri window)
 npm run tauri dev

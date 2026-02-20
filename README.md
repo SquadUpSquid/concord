@@ -5,7 +5,8 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License"></a>
   <a href="https://github.com/SquadUpSquid/concord/issues"><img src="https://img.shields.io/github/issues/SquadUpSquid/concord.svg" alt="Issues"></a>
-  <a href="https://github.com/SquadUpSquid/concord/pulls"><img src="https://img.shields.io/github/issues-pr/SquadUpSquid/concord.svg" alt="Pull Requests"></a>
+  <a href="https://github.com/SquadUpSquid/concord/network/members"><img src="https://img.shields.io/github/forks/SquadUpSquid/concord.svg" alt="Forks"></a>
+  <a href="https://github.com/SquadUpSquid/concord/stargazers"><img src="https://img.shields.io/github/stars/SquadUpSquid/concord.svg" alt="Stars"></a>
 </p>
 
 <h1 align="center">Concord</h1>

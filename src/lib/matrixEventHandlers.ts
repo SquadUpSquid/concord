@@ -1,4 +1,5 @@
 import { MatrixClient, ClientEvent, RoomEvent, RoomMemberEvent, RoomStateEvent, MatrixEvent, Room, Membership, SyncState } from "matrix-js-sdk";
+import { checkCurrentDeviceVerified, subscribeVerificationEvents } from "@/lib/verification";
 import { useRoomStore, RoomSummary, ChannelType, RoomMembership } from "@/stores/roomStore";
 import { requestNotificationPermission, sendMessageNotification, updateTitleWithUnread } from "@/lib/notifications";
 import { useMessageStore, Message } from "@/stores/messageStore";
@@ -301,6 +302,15 @@ async function applySyncReady(client: MatrixClient, hasInitiallySyncedRef: { cur
 
   useRoomStore.getState().setSyncState("PREPARED");
   updateTitleWithUnread();
+
+  if (isFirstSync) {
+    // Defer the WASM crypto call so the UI is fully stable before querying
+    // the Rust OLM machine. Calling immediately during sync can crash the
+    // WebView on some platforms (e.g. WSL).
+    setTimeout(() => {
+      checkCurrentDeviceVerified(client).catch(() => {});
+    }, 3_000);
+  }
 }
 
 let _registeredClient: MatrixClient | null = null;
@@ -310,6 +320,8 @@ export function registerEventHandlers(client: MatrixClient): void {
   // (can happen when React StrictMode double-fires effects).
   if (_registeredClient === client) return;
   _registeredClient = client;
+
+  subscribeVerificationEvents(client);
 
   const hasInitiallySyncedRef = { current: false };
 

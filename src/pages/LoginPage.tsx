@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
 import { loginToMatrix, registerToMatrix, initMatrixClient } from "@/lib/matrix";
 import { registerEventHandlers } from "@/lib/matrixEventHandlers";
@@ -14,6 +14,19 @@ export function LoginPage() {
   const [registerSuccess, setRegisterSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const passwordChecks = useMemo(() => ({
+    length: password.length >= 8,
+    lower: /[a-z]/.test(password),
+    upper: /[A-Z]/.test(password),
+    number: /[0-9]/.test(password),
+    symbol: /[^A-Za-z0-9]/.test(password),
+  }), [password]);
+  const isPasswordStrong = passwordChecks.length
+    && passwordChecks.lower
+    && passwordChecks.upper
+    && passwordChecks.number
+    && passwordChecks.symbol;
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,6 +77,9 @@ export function LoginPage() {
     setLoading(true);
 
     try {
+      if (!isPasswordStrong) {
+        throw new Error("Password is too weak. Use at least 8 chars with upper/lowercase, number, and symbol.");
+      }
       if (password !== confirmPassword) {
         throw new Error("Passwords do not match.");
       }
@@ -134,7 +150,7 @@ export function LoginPage() {
                 Password
               </label>
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-sm bg-bg-input p-2.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent"
@@ -142,6 +158,15 @@ export function LoginPage() {
                 required
               />
             </div>
+            <label className="mt-[-8px] flex cursor-pointer items-center gap-2 text-xs text-text-muted">
+              <input
+                type="checkbox"
+                checked={showPassword}
+                onChange={(e) => setShowPassword(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-bg-active bg-bg-input"
+              />
+              Show password
+            </label>
 
             {showCreateAccount && (
               <>
@@ -150,7 +175,7 @@ export function LoginPage() {
                     Confirm Password
                   </label>
                   <input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     className="w-full rounded-sm bg-bg-input p-2.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent"
@@ -171,6 +196,16 @@ export function LoginPage() {
                     placeholder="Required on some homeservers"
                   />
                 </div>
+                <div className="rounded-sm bg-bg-secondary p-3 text-xs text-text-muted">
+                  <p className="mb-2 font-semibold uppercase text-text-secondary">Password strength</p>
+                  <ul className="space-y-1">
+                    <li className={passwordChecks.length ? "text-green" : "text-text-muted"}>At least 8 characters</li>
+                    <li className={passwordChecks.lower ? "text-green" : "text-text-muted"}>At least one lowercase letter</li>
+                    <li className={passwordChecks.upper ? "text-green" : "text-text-muted"}>At least one uppercase letter</li>
+                    <li className={passwordChecks.number ? "text-green" : "text-text-muted"}>At least one number</li>
+                    <li className={passwordChecks.symbol ? "text-green" : "text-text-muted"}>At least one symbol</li>
+                  </ul>
+                </div>
               </>
             )}
 
@@ -183,7 +218,7 @@ export function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (showCreateAccount && !isPasswordStrong)}
               className="mt-2 w-full rounded-sm bg-accent p-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
             >
               {loading

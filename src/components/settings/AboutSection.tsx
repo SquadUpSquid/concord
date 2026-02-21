@@ -48,6 +48,8 @@ export function AboutSection() {
       }
     } catch (err) {
       console.error("Update check failed:", err);
+      setUpdateAvailable(false);
+      setLatestVersion(null);
       setError(
         err instanceof Error ? err.message : `Failed to check for updates: ${String(err)}`,
       );

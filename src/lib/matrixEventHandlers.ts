@@ -1,4 +1,5 @@
 import { MatrixClient, ClientEvent, RoomEvent, RoomMemberEvent, RoomStateEvent, MatrixEvent, Room, Membership, SyncState } from "matrix-js-sdk";
+import { MatrixEventEvent } from "matrix-js-sdk/lib/models/event";
 import { checkCurrentDeviceVerified, subscribeVerificationEvents } from "@/lib/verification";
 import { useRoomStore, RoomSummary, ChannelType, RoomMembership } from "@/stores/roomStore";
 import { requestNotificationPermission, sendMessageNotification, updateTitleWithUnread } from "@/lib/notifications";
@@ -11,6 +12,29 @@ import { useCategoryStore } from "@/stores/categoryStore";
 import { mxcToHttp } from "@/utils/matrixHelpers";
 import { prefetchAvatars } from "@/utils/useMatrixImage";
 import { useCustomEmojiStore } from "@/stores/customEmojiStore";
+
+const decryptListenerAttached = new WeakSet<MatrixEvent>();
+
+function registerDecryptionRefresh(event: MatrixEvent, roomId: string, client: MatrixClient): void {
+  if (!event.isEncrypted()) return;
+  if (decryptListenerAttached.has(event)) return;
+  decryptListenerAttached.add(event);
+
+  event.once(MatrixEventEvent.Decrypted, (decryptedEvent: MatrixEvent, err?: Error) => {
+    const mapped = mapEventToMessage(decryptedEvent, client);
+    useMessageStore.getState().updateMessage(roomId, mapped.eventId, {
+      body: mapped.body,
+      formattedBody: mapped.formattedBody,
+      type: mapped.type,
+      isEncrypted: mapped.isEncrypted,
+      isDecryptionFailure: !!err || mapped.isDecryptionFailure,
+      replyToEvent: mapped.replyToEvent,
+      url: mapped.url,
+      info: mapped.info,
+      file: mapped.file,
+    });
+  });
+}
 
 function mapEventToMessage(event: MatrixEvent, client: MatrixClient): Message {
   const sender = event.sender;
@@ -375,6 +399,7 @@ export function registerEventHandlers(client: MatrixClient): void {
         if (message.isEdited) return;
 
         useMessageStore.getState().addMessage(room.roomId, message);
+        registerDecryptionRefresh(event, room.roomId, client);
 
         // Send desktop notification for messages from other people
         const myUserId = client.getUserId();
@@ -721,7 +746,10 @@ export function loadRoomMessages(client: MatrixClient, roomId: string): void {
         e.getType() === "m.room.message" ||
         e.getType() === "m.room.encrypted"
     )
-    .map((e) => mapEventToMessage(e, client));
+    .map((e) => {
+      registerDecryptionRefresh(e, roomId, client);
+      return mapEventToMessage(e, client);
+    });
 
   useMessageStore.getState().setMessages(roomId, messages);
   syncRoomMembers(client, roomId);

@@ -31,6 +31,18 @@ function EncryptedPlaceholder() {
   );
 }
 
+function DecryptingPlaceholder() {
+  return (
+    <div className="flex items-center gap-1.5 text-sm italic text-text-muted">
+      <svg className="h-4 w-4 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+        <path d="M7 11V7a5 5 0 0110 0v4" />
+      </svg>
+      <span>Decrypting message...</span>
+    </div>
+  );
+}
+
 function RedactedPlaceholder() {
   return (
     <div className="flex items-center gap-1.5 text-sm italic text-text-muted">
@@ -57,6 +69,15 @@ function ReplyContext({ reply }: { reply: NonNullable<Message["replyToEvent"]> }
 function MessageBody({ message }: { message: Message }) {
   if (message.isRedacted) return <RedactedPlaceholder />;
   if (message.isDecryptionFailure) return <EncryptedPlaceholder />;
+  if (
+    message.isEncrypted &&
+    !message.body &&
+    !message.formattedBody &&
+    !message.url &&
+    !message.file
+  ) {
+    return <DecryptingPlaceholder />;
+  }
   return (
     <div className="flex items-baseline gap-1">
       <MessageContent

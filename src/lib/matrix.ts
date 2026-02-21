@@ -149,3 +149,107 @@ export async function loginToMatrix(
     deviceId: response.device_id,
   };
 }
+
+type MatrixAuthFlow = { stages?: string[] };
+type MatrixUiaData = {
+  session?: string;
+  flows?: MatrixAuthFlow[];
+};
+type MatrixLikeError = {
+  data?: MatrixUiaData & { error?: string };
+  message?: string;
+};
+
+function chooseSupportedRegistrationFlow(flows: MatrixAuthFlow[]): string[] | null {
+  const supportedStages = new Set([
+    "m.login.dummy",
+    "m.login.registration_token",
+    "org.matrix.msc3231.login.registration_token",
+  ]);
+
+  const supportedFlow = flows.find((flow) => {
+    const stages = flow.stages ?? [];
+    return stages.length > 0 && stages.every((stage) => supportedStages.has(stage));
+  });
+
+  return supportedFlow?.stages ?? null;
+}
+
+function normalizeUsername(username: string): string {
+  return username.startsWith("@") ? username.slice(1).split(":")[0] : username;
+}
+
+export async function registerToMatrix(
+  homeserverUrl: string,
+  username: string,
+  password: string,
+  registrationToken?: string
+): Promise<{ accessToken: string; userId: string; deviceId: string }> {
+  await clearAllDatabases();
+
+  const tempClient = sdk.createClient({
+    baseUrl: homeserverUrl,
+    fetchFn: tauriFetch as unknown as typeof globalThis.fetch,
+  });
+
+  const registerRequestBase = {
+    username: normalizeUsername(username),
+    password,
+    inhibit_login: false,
+    initial_device_display_name: "Concord Desktop",
+  };
+
+  try {
+    const response = await tempClient.registerRequest(registerRequestBase);
+    if (!response.access_token || !response.device_id) {
+      throw new Error("Registration succeeded but no access token/device was returned.");
+    }
+    return {
+      accessToken: response.access_token,
+      userId: response.user_id,
+      deviceId: response.device_id,
+    };
+  } catch (err) {
+    const matrixErr = err as MatrixLikeError;
+    const uia = matrixErr.data;
+    const session = uia?.session;
+    const flows = Array.isArray(uia?.flows) ? uia.flows : [];
+    if (!session || flows.length === 0) {
+      throw err;
+    }
+
+    const stages = chooseSupportedRegistrationFlow(flows);
+    if (!stages) {
+      throw new Error("This homeserver requires unsupported registration steps in-app. Try registering in Element first.");
+    }
+
+    if (
+      (stages.includes("m.login.registration_token") || stages.includes("org.matrix.msc3231.login.registration_token")) &&
+      !registrationToken?.trim()
+    ) {
+      throw new Error("This homeserver requires a registration token.");
+    }
+
+    for (const stage of stages) {
+      const auth: Record<string, unknown> = { type: stage, session };
+      if (stage === "m.login.registration_token" || stage === "org.matrix.msc3231.login.registration_token") {
+        auth.token = registrationToken!.trim();
+      }
+
+      const response = await tempClient.registerRequest({
+        ...registerRequestBase,
+        auth: auth as sdk.AuthDict,
+      });
+
+      if (response.access_token && response.device_id) {
+        return {
+          accessToken: response.access_token,
+          userId: response.user_id,
+          deviceId: response.device_id,
+        };
+      }
+    }
+
+    throw new Error("Registration did not complete. Please try again.");
+  }
+}

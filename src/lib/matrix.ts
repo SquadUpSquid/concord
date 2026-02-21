@@ -211,6 +211,10 @@ export async function registerToMatrix(
     };
   } catch (err) {
     const matrixErr = err as MatrixLikeError;
+    const rawError = matrixErr.data?.error ?? matrixErr.message ?? "";
+    if (rawError.includes("Registration has been disabled")) {
+      throw new Error("This homeserver has account registration disabled. Create the account through your server admin or use another homeserver.");
+    }
     const uia = matrixErr.data;
     const session = uia?.session;
     const flows = Array.isArray(uia?.flows) ? uia.flows : [];

@@ -108,9 +108,9 @@ const THEME_VARS: Record<string, Record<string, string>> = {
   },
 };
 
-const FONT_SIZE_MAP: Record<string, string> = {
-  small: "13px",
-  normal: "15px",
+const APP_FONT_SIZE_MAP: Record<string, string> = {
+  small: "14px",
+  normal: "16px",
   large: "18px",
 };
 
@@ -131,10 +131,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [theme]);
 
   useEffect(() => {
-    document.documentElement.style.setProperty(
-      "--chat-font-size",
-      FONT_SIZE_MAP[fontSize] ?? "15px"
-    );
+    const root = document.documentElement;
+    const size = APP_FONT_SIZE_MAP[fontSize] ?? "16px";
+    // Scale all rem-based typography across the app.
+    root.style.fontSize = size;
+    // Keep message body size aligned to the same scale.
+    root.style.setProperty("--chat-font-size", "1rem");
   }, [fontSize]);
 
   useEffect(() => {

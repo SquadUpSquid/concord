@@ -3,7 +3,6 @@ import { useAuthStore } from "@/stores/authStore";
 import { loginToMatrix, registerToMatrix, initMatrixClient } from "@/lib/matrix";
 import { registerEventHandlers } from "@/lib/matrixEventHandlers";
 import { TitleBar } from "@/components/layout/TitleBar";
-import { openUrl } from "@tauri-apps/plugin-opener";
 
 const MATRIX_ORG_SIGNUP_URL = "https://app.element.io/#/register";
 
@@ -42,11 +41,7 @@ export function LoginPage() {
     && passwordChecks.symbol;
 
   const openMatrixOrgSignup = async () => {
-    try {
-      await openUrl(MATRIX_ORG_SIGNUP_URL);
-    } catch {
-      window.open(MATRIX_ORG_SIGNUP_URL, "_blank", "noopener,noreferrer");
-    }
+    window.open(MATRIX_ORG_SIGNUP_URL, "_blank", "noopener,noreferrer");
   };
 
   const handleLogin = async (e: React.FormEvent) => {

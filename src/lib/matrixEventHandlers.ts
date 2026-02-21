@@ -359,11 +359,16 @@ export function registerEventHandlers(client: MatrixClient): void {
           });
         }
       } else {
-        // Skip edit events that weren't caught above (e.g. still-encrypted edits)
-        const relation = event.getRelation?.();
-        if (relation?.rel_type === "m.replace") return;
+        // Skip edit events that weren't caught above (e.g. encrypted edits
+        // where m.relates_to isn't visible yet, or local echo duplicates)
+        const content = event.getContent();
+        if (content["m.new_content"] || content["m.relates_to"]?.rel_type === "m.replace") return;
 
         const message = mapEventToMessage(event, client);
+
+        // Also skip if mapEventToMessage detected this as an edit via replacingEvent()
+        if (message.isEdited && message.body.startsWith("* ")) return;
+
         useMessageStore.getState().addMessage(room.roomId, message);
 
         // Send desktop notification for messages from other people

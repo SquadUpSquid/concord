@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import type { VerificationRequest, Verifier } from "matrix-js-sdk/lib/crypto-api/verification";
 import {
+  canAcceptVerificationRequest,
+  VerificationPhase,
   VerificationRequestEvent,
   VerifierEvent,
 } from "matrix-js-sdk/lib/crypto-api/verification";
@@ -8,16 +10,6 @@ import { Modal } from "@/components/common/Modal";
 import { useVerificationStore } from "@/stores/verificationStore";
 import { getMatrixClient } from "@/lib/matrix";
 import { checkCurrentDeviceVerified } from "@/lib/verification";
-
-/** VerificationPhase enum values from matrix-js-sdk (crypto-api) */
-const VerificationPhase = {
-  Unsent: 1,
-  Requested: 2,
-  Ready: 3,
-  Started: 4,
-  Cancelled: 5,
-  Done: 6,
-} as const;
 
 type SasState = {
   sas: { decimal?: [number, number, number]; emoji?: [string, string][] };
@@ -178,7 +170,7 @@ export function VerificationFlowModal() {
   if (!request || phase == null) return null;
 
   // Incoming request: show Accept / Decline when still in Requested and can accept
-  const canAccept = phase === VerificationPhase.Requested || phase === VerificationPhase.Unsent;
+  const canAccept = canAcceptVerificationRequest(request);
   if (isIncoming && canAccept && !request.accepting && !request.declining) {
     const otherDeviceId = request.otherDeviceId ?? "another device";
     return (

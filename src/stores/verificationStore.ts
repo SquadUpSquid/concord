@@ -24,14 +24,27 @@ export const useVerificationStore = create<VerificationState>()((set) => ({
   setDeviceVerified: (verified) => set({ deviceVerified: verified }),
   setActiveRequest: (request) => set({ activeRequest: request }),
   addIncomingRequest: (request) =>
-    set((s) => ({
-      incomingRequests: s.incomingRequests.includes(request)
-        ? s.incomingRequests
-        : [...s.incomingRequests, request],
-    })),
+    set((s) => {
+      const requestTxnId = request.transactionId;
+      const exists = s.incomingRequests.some((r) =>
+        r === request ||
+        (!!requestTxnId && r.transactionId === requestTxnId)
+      );
+      return {
+        incomingRequests: exists
+          ? s.incomingRequests
+          : [...s.incomingRequests, request],
+      };
+    }),
   removeIncomingRequest: (request) =>
-    set((s) => ({
-      incomingRequests: s.incomingRequests.filter((r) => r !== request),
-    })),
+    set((s) => {
+      const requestTxnId = request.transactionId;
+      return {
+        incomingRequests: s.incomingRequests.filter((r) =>
+          r !== request &&
+          (!requestTxnId || r.transactionId !== requestTxnId)
+        ),
+      };
+    }),
   clearIncoming: () => set({ incomingRequests: [] }),
 }));

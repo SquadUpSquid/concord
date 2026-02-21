@@ -61,6 +61,16 @@ describe("verificationStore", () => {
     expect(useVerificationStore.getState().incomingRequests).toHaveLength(1);
   });
 
+  it("addIncomingRequest deduplicates requests with same transactionId", () => {
+    const req1 = { transactionId: "txn-1" } as unknown as VerificationRequest;
+    const req2 = { transactionId: "txn-1" } as unknown as VerificationRequest;
+    useVerificationStore.getState().addIncomingRequest(req1);
+    useVerificationStore.getState().addIncomingRequest(req2);
+    const { incomingRequests } = useVerificationStore.getState();
+    expect(incomingRequests).toHaveLength(1);
+    expect(incomingRequests[0]).toBe(req1);
+  });
+
   it("addIncomingRequest adds multiple distinct requests", () => {
     const req1 = { id: "1" } as unknown as VerificationRequest;
     const req2 = { id: "2" } as unknown as VerificationRequest;
@@ -75,6 +85,20 @@ describe("verificationStore", () => {
     useVerificationStore.getState().addIncomingRequest(req1);
     useVerificationStore.getState().addIncomingRequest(req2);
     useVerificationStore.getState().removeIncomingRequest(req1);
+    const { incomingRequests } = useVerificationStore.getState();
+    expect(incomingRequests).toHaveLength(1);
+    expect(incomingRequests[0]).toBe(req2);
+  });
+
+  it("removeIncomingRequest removes by transactionId when reference differs", () => {
+    const req1 = { transactionId: "txn-1" } as unknown as VerificationRequest;
+    const req2 = { transactionId: "txn-2" } as unknown as VerificationRequest;
+    useVerificationStore.getState().addIncomingRequest(req1);
+    useVerificationStore.getState().addIncomingRequest(req2);
+
+    const removeRef = { transactionId: "txn-1" } as unknown as VerificationRequest;
+    useVerificationStore.getState().removeIncomingRequest(removeRef);
+
     const { incomingRequests } = useVerificationStore.getState();
     expect(incomingRequests).toHaveLength(1);
     expect(incomingRequests[0]).toBe(req2);

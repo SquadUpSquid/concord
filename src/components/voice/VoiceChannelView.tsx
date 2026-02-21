@@ -5,7 +5,6 @@ import { useAuthStore } from "@/stores/authStore";
 import { useUiStore } from "@/stores/uiStore";
 import { Avatar } from "@/components/common/Avatar";
 import { VoiceParticipant } from "./VoiceParticipant";
-import { VoiceControlBar } from "./VoiceControlBar";
 import { VoiceChatPanel } from "./VoiceChatPanel";
 import { ScreenshareFeedView } from "./ScreenshareFeedView";
 import { getMatrixClient } from "@/lib/matrix";
@@ -243,9 +242,6 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
           </div>
         )}
       </div>
-
-      {/* Control bar - only show when in call */}
-        {isInThisCall && <VoiceControlBar />}
       </div>
       {showChat && <VoiceChatPanel roomId={roomId} onClose={() => setShowChat(false)} />}
     </div>

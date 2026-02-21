@@ -7,7 +7,6 @@ import { ChannelItem } from "./ChannelItem";
 import { DmItem } from "./DmItem";
 import { InviteItem } from "./InviteItem";
 import { useAuthStore } from "@/stores/authStore";
-import { ConnectedCallBar } from "@/components/voice/ConnectedCallBar";
 import { getMatrixClient } from "@/lib/matrix";
 import { POWER_LEVEL_MODERATOR } from "@/utils/roles";
 import { EmojiText } from "@/components/common/Emoji";
@@ -566,9 +565,6 @@ export function ChannelSidebar() {
           </>
         )}
       </div>
-
-      {/* Voice connection bar */}
-      <ConnectedCallBar />
     </div>
   );
 }

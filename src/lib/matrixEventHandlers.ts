@@ -358,6 +358,7 @@ export function registerEventHandlers(client: MatrixClient): void {
             isEdited: true,
           });
         }
+        return;
       } else {
         // Skip edit events that weren't caught above (e.g. encrypted edits
         // where m.relates_to isn't visible yet, or local echo duplicates)
@@ -366,8 +367,9 @@ export function registerEventHandlers(client: MatrixClient): void {
 
         const message = mapEventToMessage(event, client);
 
-        // Also skip if mapEventToMessage detected this as an edit via replacingEvent()
-        if (message.isEdited && message.body.startsWith("* ")) return;
+        // Replacement/edit events should only update existing timeline entries,
+        // never be appended as new messages.
+        if (message.isEdited) return;
 
         useMessageStore.getState().addMessage(room.roomId, message);
 

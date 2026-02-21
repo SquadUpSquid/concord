@@ -1,4 +1,51 @@
 use tauri::Manager;
+use tauri_plugin_updater::UpdaterExt;
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateCheckResult {
+    available: bool,
+    current_version: String,
+    latest_version: Option<String>,
+}
+
+#[tauri::command]
+async fn check_for_updates(app: tauri::AppHandle) -> Result<UpdateCheckResult, String> {
+    let current_version = app.package_info().version.to_string();
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let update = updater.check().await.map_err(|e| e.to_string())?;
+
+    if let Some(update) = update {
+        Ok(UpdateCheckResult {
+            available: true,
+            current_version,
+            latest_version: Some(update.version.to_string()),
+        })
+    } else {
+        Ok(UpdateCheckResult {
+            available: false,
+            current_version,
+            latest_version: None,
+        })
+    }
+}
+
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let update = updater.check().await.map_err(|e| e.to_string())?;
+
+    match update {
+        Some(update) => {
+            update
+                .download_and_install(|_, _| {}, || {})
+                .await
+                .map_err(|e| e.to_string())?;
+            app.restart();
+        }
+        None => Err("No update is currently available.".to_string()),
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -9,7 +56,23 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .invoke_handler(tauri::generate_handler![check_for_updates, install_update])
         .setup(|app| {
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let updater = match app_handle.updater() {
+                    Ok(updater) => updater,
+                    Err(err) => {
+                        eprintln!("updater init failed: {err}");
+                        return;
+                    }
+                };
+
+                if let Err(err) = updater.check().await {
+                    eprintln!("startup update check failed: {err}");
+                }
+            });
+
             #[cfg(target_os = "linux")]
             {
                 use webkit2gtk::{PermissionRequestExt, SettingsExt, WebViewExt};

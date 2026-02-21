@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { getMatrixClient } from "@/lib/matrix";
+import { requestOwnUserVerification, checkCurrentDeviceVerified } from "@/lib/verification";
+import { useVerificationStore } from "@/stores/verificationStore";
 
 interface DeviceInfo {
   deviceId: string;
@@ -16,6 +18,11 @@ export function SessionsSection() {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const deviceVerified = useVerificationStore((s) => s.deviceVerified);
+  const activeRequest = useVerificationStore((s) => s.activeRequest);
+  const incomingRequests = useVerificationStore((s) => s.incomingRequests);
+  const setActiveRequest = useVerificationStore((s) => s.setActiveRequest);
 
   const fetchDevices = useCallback(async () => {
     const client = getMatrixClient();
@@ -50,6 +57,31 @@ export function SessionsSection() {
   useEffect(() => {
     fetchDevices();
   }, [fetchDevices]);
+
+  useEffect(() => {
+    const client = getMatrixClient();
+    if (client) {
+      checkCurrentDeviceVerified(client).catch(() => {});
+    }
+  }, []);
+
+  const handleStartVerification = async () => {
+    const client = getMatrixClient();
+    if (!client) return;
+    const pending = activeRequest ?? incomingRequests[0] ?? null;
+    if (pending) {
+      setActiveRequest(pending);
+      return;
+    }
+    setVerifying(true);
+    try {
+      await requestOwnUserVerification(client);
+    } catch {
+      setError("Failed to start verification.");
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   const handleRemoveDevice = async (deviceId: string) => {
     const client = getMatrixClient();
@@ -104,6 +136,28 @@ export function SessionsSection() {
       <p className="mb-6 text-sm text-text-muted">
         Manage your active sessions. These are the devices currently logged into your Matrix account.
       </p>
+
+      <div className="mb-4 rounded-lg border border-bg-active bg-bg-secondary p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-text-primary">Session verification</p>
+            <p className="text-xs text-text-muted">
+              {deviceVerified === true
+                ? "This device is verified."
+                : "This device is not verified. Verify it with another trusted device."}
+            </p>
+          </div>
+          {deviceVerified !== true && (
+            <button
+              onClick={handleStartVerification}
+              disabled={verifying}
+              className="rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            >
+              {verifying ? "Starting..." : (activeRequest || incomingRequests.length > 0) ? "Continue verification" : "Verify this device"}
+            </button>
+          )}
+        </div>
+      </div>
 
       {error && (
         <div className="mb-4 rounded-lg border border-red/30 bg-red/10 p-3">

@@ -6,6 +6,7 @@ import { AppearanceSection } from "./AppearanceSection";
 import { NotificationsSection } from "./NotificationsSection";
 import { SessionsSection } from "./SessionsSection";
 import { VoiceVideoSection } from "./VoiceVideoSection";
+import { AboutSection } from "./AboutSection";
 import { destroyMatrixClient } from "@/lib/matrix";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -15,7 +16,8 @@ type SettingsTab =
   | "appearance"
   | "notifications"
   | "voicevideo"
-  | "sessions";
+  | "sessions"
+  | "about";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "profile", label: "My Account", icon: "user" },
@@ -24,6 +26,7 @@ const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "notifications", label: "Notifications", icon: "bell" },
   { id: "voicevideo", label: "Voice & Video", icon: "mic" },
   { id: "sessions", label: "Sessions", icon: "devices" },
+  { id: "about", label: "About", icon: "info" },
 ];
 
 function TabIcon({ icon }: { icon: string }) {
@@ -69,6 +72,13 @@ function TabIcon({ icon }: { icon: string }) {
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
           <path d="M8 21h8M12 17v4" />
+        </svg>
+      );
+    case "info":
+      return (
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 16v-4M12 8h.01" />
         </svg>
       );
     default:
@@ -155,6 +165,7 @@ export function SettingsPage() {
             {activeTab === "notifications" && <NotificationsSection />}
             {activeTab === "voicevideo" && <VoiceVideoSection />}
             {activeTab === "sessions" && <SessionsSection />}
+            {activeTab === "about" && <AboutSection />}
           </div>
         </div>
       </div>

@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { getMatrixClient } from "@/lib/matrix";
+import { getMatrixClient, cacheSecretStorageRecoveryKey } from "@/lib/matrix";
 import { requestOwnUserVerification, checkCurrentDeviceVerified } from "@/lib/verification";
 import { useVerificationStore } from "@/stores/verificationStore";
+import { decodeRecoveryKey } from "matrix-js-sdk/lib/crypto-api/recovery-key";
+import { ImportRoomKeyStage } from "matrix-js-sdk/lib/crypto-api";
+import { useRoomStore } from "@/stores/roomStore";
+import { loadRoomMessages } from "@/lib/matrixEventHandlers";
 
 interface DeviceInfo {
   deviceId: string;
@@ -21,6 +25,17 @@ export function SessionsSection() {
   const [removeTargetId, setRemoveTargetId] = useState<string | null>(null);
   const [removePassword, setRemovePassword] = useState("");
   const [verifying, setVerifying] = useState(false);
+  const [restoreSecurityKey, setRestoreSecurityKey] = useState("");
+  const [restoreRecoveryKey, setRestoreRecoveryKey] = useState("");
+  const [restorePassphrase, setRestorePassphrase] = useState("");
+  const [restoring, setRestoring] = useState(false);
+  const [restoreProgress, setRestoreProgress] = useState<string | null>(null);
+  const [restoreResult, setRestoreResult] = useState<string | null>(null);
+  const [createPassphrase, setCreatePassphrase] = useState("");
+  const [creatingRecovery, setCreatingRecovery] = useState(false);
+  const [createStatus, setCreateStatus] = useState<string | null>(null);
+  const [createdRecoveryKey, setCreatedRecoveryKey] = useState<string | null>(null);
+  const selectedRoomId = useRoomStore((s) => s.selectedRoomId);
   const deviceVerified = useVerificationStore((s) => s.deviceVerified);
   const activeRequest = useVerificationStore((s) => s.activeRequest);
   const incomingRequests = useVerificationStore((s) => s.incomingRequests);
@@ -82,6 +97,163 @@ export function SessionsSection() {
       setError("Failed to start verification.");
     } finally {
       setVerifying(false);
+    }
+  };
+
+  const getRestoreError = (err: unknown, fallback: string): string => {
+    const raw = err instanceof Error ? err.message : fallback;
+    if (raw.includes("key backup on server does not match the decryption key")) {
+      return "This key does not match your current backup. Use your Security Key (SSSS), backup passphrase, or verify with an existing device.";
+    }
+    if (raw.includes("No key backup found")) {
+      return "No encrypted key backup is configured on this account yet.";
+    }
+    return raw || fallback;
+  };
+
+  const runBackupRestore = async (client: NonNullable<ReturnType<typeof getMatrixClient>>) => {
+    const crypto = client.getCrypto();
+    if (!crypto) return;
+
+    await crypto.checkKeyBackupAndEnable();
+    const result = await crypto.restoreKeyBackup({
+      progressCallback: (progress) => {
+        if (progress.stage === ImportRoomKeyStage.Fetch) {
+          setRestoreProgress("Fetching backup keys from server...");
+          return;
+        }
+        setRestoreProgress(`Restoring keys... ${progress.successes + progress.failures}/${progress.total}`);
+      },
+    });
+
+    setRestoreResult(`Recovered ${result.imported} of ${result.total} keys from backup.`);
+    if (selectedRoomId) {
+      loadRoomMessages(client, selectedRoomId);
+    }
+    setRestoreProgress(null);
+  };
+
+  const handleRestoreFromSecurityKey = async () => {
+    const client = getMatrixClient();
+    if (!client) return;
+    const crypto = client.getCrypto();
+    if (!crypto) return;
+    if (!restoreSecurityKey.trim()) {
+      setError("Enter your Security Key.");
+      return;
+    }
+
+    setRestoring(true);
+    setError(null);
+    setRestoreResult(null);
+    setRestoreProgress("Unlocking secret storage...");
+    try {
+      const key = decodeRecoveryKey(restoreSecurityKey.trim());
+      const defaultKeyId = await client.secretStorage.getDefaultKeyId();
+      cacheSecretStorageRecoveryKey(key, defaultKeyId);
+      await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
+      await runBackupRestore(client);
+      setRestoreSecurityKey("");
+    } catch (err) {
+      console.error("Restore from security key failed:", err);
+      setError(getRestoreError(err, "Failed to restore from Security Key."));
+      setRestoreProgress(null);
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const handleRestoreFromRecoveryKey = async () => {
+    const client = getMatrixClient();
+    if (!client) return;
+    const crypto = client.getCrypto();
+    if (!crypto) return;
+    if (!restoreRecoveryKey.trim()) {
+      setError("Enter a recovery key.");
+      return;
+    }
+
+    setRestoring(true);
+    setError(null);
+    setRestoreResult(null);
+    setRestoreProgress("Preparing key backup restore...");
+    try {
+      const key = decodeRecoveryKey(restoreRecoveryKey.trim());
+      const backupInfo = await crypto.getKeyBackupInfo();
+      const version = backupInfo?.version;
+      if (!version) {
+        throw new Error("No key backup found on this account.");
+      }
+
+      await crypto.storeSessionBackupPrivateKey(key, version);
+      await runBackupRestore(client);
+      setRestoreRecoveryKey("");
+    } catch (err) {
+      console.error("Restore from recovery key failed:", err);
+      setError(getRestoreError(err, "Failed to restore from recovery key."));
+      setRestoreProgress(null);
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const handleRestoreFromPassphrase = async () => {
+    const client = getMatrixClient();
+    if (!client) return;
+    const crypto = client.getCrypto();
+    if (!crypto) return;
+    if (!restorePassphrase.trim()) {
+      setError("Enter a backup passphrase.");
+      return;
+    }
+
+    setRestoring(true);
+    setError(null);
+    setRestoreResult(null);
+    setRestoreProgress("Preparing key backup restore...");
+    try {
+      await crypto.restoreKeyBackupWithPassphrase(restorePassphrase.trim());
+      await runBackupRestore(client);
+      setRestorePassphrase("");
+    } catch (err) {
+      console.error("Restore from passphrase failed:", err);
+      setError(getRestoreError(err, "Failed to restore from passphrase."));
+      setRestoreProgress(null);
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const handleCreateRecoverySetup = async () => {
+    const client = getMatrixClient();
+    if (!client) return;
+    const crypto = client.getCrypto();
+    if (!crypto) return;
+
+    setCreatingRecovery(true);
+    setError(null);
+    setCreateStatus("Creating recovery key and key backup...");
+    setCreatedRecoveryKey(null);
+    try {
+      const generated = await crypto.createRecoveryKeyFromPassphrase(createPassphrase.trim() || undefined);
+      cacheSecretStorageRecoveryKey(generated.privateKey);
+      await crypto.bootstrapSecretStorage({
+        setupNewSecretStorage: true,
+        setupNewKeyBackup: true,
+        createSecretStorageKey: async () => generated,
+      });
+      const keyId = await client.secretStorage.getDefaultKeyId();
+      cacheSecretStorageRecoveryKey(generated.privateKey, keyId);
+      await crypto.checkKeyBackupAndEnable();
+      setCreatedRecoveryKey(generated.encodedPrivateKey ?? null);
+      setCreateStatus("Recovery setup complete. Save your Security Key now.");
+      setCreatePassphrase("");
+    } catch (err) {
+      console.error("Failed to create recovery setup:", err);
+      setError(err instanceof Error ? err.message : "Failed to create recovery setup.");
+      setCreateStatus(null);
+    } finally {
+      setCreatingRecovery(false);
     }
   };
 
@@ -179,6 +351,126 @@ export function SessionsSection() {
             >
               {verifying ? "Starting..." : (activeRequest || incomingRequests.length > 0) ? "Continue verification" : "Verify this device"}
             </button>
+          )}
+        </div>
+      </div>
+
+      <div className="mb-4 rounded-lg border border-bg-active bg-bg-secondary p-4">
+        <div className="mb-3">
+          <p className="text-sm font-medium text-text-primary">Encrypted history recovery</p>
+          <p className="text-xs text-text-muted">
+            Recover old encrypted messages on this device.
+          </p>
+        </div>
+
+        <div className="mb-3 rounded border border-bg-active bg-bg-tertiary p-3">
+          <p className="text-xs font-semibold uppercase text-text-secondary">1. Key share from verified device</p>
+          <p className="mt-1 text-xs text-text-muted">
+            Verify this device with one of your already logged-in trusted devices to receive missing room keys.
+          </p>
+          <button
+            onClick={handleStartVerification}
+            disabled={verifying}
+            className="mt-2 rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+          >
+            {verifying ? "Starting..." : (activeRequest || incomingRequests.length > 0) ? "Continue verification" : "Start verification"}
+          </button>
+        </div>
+
+        <div className="rounded border border-bg-active bg-bg-tertiary p-3">
+          <p className="text-xs font-semibold uppercase text-text-secondary">2. Restore from encrypted key backup</p>
+          <p className="mt-1 text-xs text-text-muted">
+            If you enabled backup before, restore keys using your Security Key, backup key, or backup passphrase.
+          </p>
+
+          <div className="mt-3 flex flex-col gap-2">
+            <label className="text-[11px] font-bold uppercase text-text-secondary">Security Key (SSSS)</label>
+            <input
+              type="text"
+              value={restoreSecurityKey}
+              onChange={(e) => setRestoreSecurityKey(e.target.value)}
+              placeholder="Element Security Key"
+              className="rounded-sm bg-bg-input px-2 py-1.5 text-xs text-text-primary outline-none focus:ring-1 focus:ring-accent"
+            />
+            <button
+              onClick={() => void handleRestoreFromSecurityKey()}
+              disabled={restoring}
+              className="w-fit rounded-sm border border-bg-active px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+            >
+              Restore with Security Key
+            </button>
+          </div>
+
+          <div className="mt-3 flex flex-col gap-2">
+            <label className="text-[11px] font-bold uppercase text-text-secondary">Recovery Key</label>
+            <input
+              type="text"
+              value={restoreRecoveryKey}
+              onChange={(e) => setRestoreRecoveryKey(e.target.value)}
+              placeholder="EsTc... (recovery key)"
+              className="rounded-sm bg-bg-input px-2 py-1.5 text-xs text-text-primary outline-none focus:ring-1 focus:ring-accent"
+            />
+            <button
+              onClick={() => void handleRestoreFromRecoveryKey()}
+              disabled={restoring}
+              className="w-fit rounded-sm border border-bg-active px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+            >
+              Restore with Recovery Key
+            </button>
+          </div>
+
+          <div className="mt-3 flex flex-col gap-2">
+            <label className="text-[11px] font-bold uppercase text-text-secondary">Backup Passphrase</label>
+            <input
+              type="password"
+              value={restorePassphrase}
+              onChange={(e) => setRestorePassphrase(e.target.value)}
+              placeholder="Backup passphrase"
+              className="rounded-sm bg-bg-input px-2 py-1.5 text-xs text-text-primary outline-none focus:ring-1 focus:ring-accent"
+            />
+            <button
+              onClick={() => void handleRestoreFromPassphrase()}
+              disabled={restoring}
+              className="w-fit rounded-sm border border-bg-active px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+            >
+              Restore with Passphrase
+            </button>
+          </div>
+
+          {restoreProgress && <p className="mt-3 text-xs text-text-muted">{restoreProgress}</p>}
+          {restoreResult && <p className="mt-2 text-xs text-green">{restoreResult}</p>}
+        </div>
+      </div>
+
+      <div className="mb-4 rounded-lg border border-bg-active bg-bg-secondary p-4">
+        <div className="mb-3">
+          <p className="text-sm font-medium text-text-primary">Create Recovery Key</p>
+          <p className="text-xs text-text-muted">
+            Create or rotate your Security Key and key backup in Concord.
+          </p>
+        </div>
+        <div className="rounded border border-bg-active bg-bg-tertiary p-3">
+          <label className="text-[11px] font-bold uppercase text-text-secondary">Optional passphrase</label>
+          <input
+            type="password"
+            value={createPassphrase}
+            onChange={(e) => setCreatePassphrase(e.target.value)}
+            placeholder="Optional passphrase for this recovery key"
+            className="mt-2 w-full rounded-sm bg-bg-input px-2 py-1.5 text-xs text-text-primary outline-none focus:ring-1 focus:ring-accent"
+          />
+          <button
+            onClick={() => void handleCreateRecoverySetup()}
+            disabled={creatingRecovery}
+            className="mt-3 rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+          >
+            {creatingRecovery ? "Creating..." : "Create Recovery Key"}
+          </button>
+          {createStatus && <p className="mt-2 text-xs text-text-muted">{createStatus}</p>}
+          {createdRecoveryKey && (
+            <div className="mt-2 rounded border border-yellow/30 bg-yellow/10 p-2">
+              <p className="mb-1 text-xs font-semibold text-yellow">Save this Security Key now:</p>
+              <p className="break-all font-mono text-[11px] text-text-primary">{createdRecoveryKey}</p>
+            </div>
           )}
         </div>
       </div>

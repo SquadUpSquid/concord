@@ -117,68 +117,75 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-bg-tertiary">
-      {/* Sidebar */}
-      <div className="flex w-56 flex-col bg-bg-secondary">
-        <div className="flex-1 overflow-y-auto px-2 py-6">
-          <p className="mb-2 px-3 text-[11px] font-bold uppercase tracking-wide text-text-muted">
-            User Settings
-          </p>
-          {TABS.map((tab) => (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-3 backdrop-blur-[1px] md:p-6"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) closeModal();
+      }}
+    >
+      <div className="flex h-[86vh] w-[92vw] overflow-hidden rounded-xl border border-bg-active bg-bg-tertiary shadow-2xl md:h-[80vh] md:w-[78vw] md:min-h-[560px] md:min-w-[920px] md:max-w-[1400px]">
+        {/* Sidebar */}
+        <div className="flex w-56 flex-col bg-bg-secondary">
+          <div className="flex-1 overflow-y-auto px-2 py-6">
+            <p className="mb-2 px-3 text-[11px] font-bold uppercase tracking-wide text-text-muted">
+              User Settings
+            </p>
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`mb-0.5 flex w-full items-center gap-2.5 rounded-sm px-3 py-1.5 text-sm transition-colors ${
+                  activeTab === tab.id
+                    ? "bg-bg-active text-text-primary"
+                    : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+                }`}
+              >
+                <TabIcon icon={tab.icon} />
+                {tab.label}
+              </button>
+            ))}
+
+            <div className="mx-3 my-3 h-px bg-bg-active" />
+
             <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`mb-0.5 flex w-full items-center gap-2.5 rounded-sm px-3 py-1.5 text-sm transition-colors ${
-                activeTab === tab.id
-                  ? "bg-bg-active text-text-primary"
-                  : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-              }`}
+              onClick={handleLogout}
+              className="flex w-full items-center gap-2.5 rounded-sm px-3 py-1.5 text-sm text-red hover:bg-bg-hover"
             >
-              <TabIcon icon={tab.icon} />
-              {tab.label}
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
+              </svg>
+              Log Out
             </button>
-          ))}
-
-          <div className="mx-3 my-3 h-px bg-bg-active" />
-
-          <button
-            onClick={handleLogout}
-            className="flex w-full items-center gap-2.5 rounded-sm px-3 py-1.5 text-sm text-red hover:bg-bg-hover"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
-            </svg>
-            Log Out
-          </button>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Close button */}
-        <div className="flex justify-end p-4">
-          <button
-            onClick={closeModal}
-            className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-text-muted/40 text-text-muted transition-colors hover:border-text-primary hover:text-text-primary"
-            title="Close (Esc)"
-          >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
+          </div>
         </div>
 
-        {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto px-10 pb-16">
-          <div className="mx-auto max-w-2xl">
-            {activeTab === "profile" && <ProfileSection />}
-            {activeTab === "privacy" && <PrivacySection />}
-            {activeTab === "appearance" && <AppearanceSection />}
-            {activeTab === "notifications" && <NotificationsSection />}
-            {activeTab === "voicevideo" && <VoiceVideoSection />}
-            {activeTab === "sessions" && <SessionsSection />}
-            {activeTab === "about" && <AboutSection />}
-            {activeTab === "diagnostics" && <DiagnosticsSection />}
+        {/* Content */}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {/* Close button */}
+          <div className="flex justify-end p-4">
+            <button
+              onClick={closeModal}
+              className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-text-muted/40 text-text-muted transition-colors hover:border-text-primary hover:text-text-primary"
+              title="Close (Esc)"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto px-10 pb-16">
+            <div className="mx-auto max-w-2xl">
+              {activeTab === "profile" && <ProfileSection />}
+              {activeTab === "privacy" && <PrivacySection />}
+              {activeTab === "appearance" && <AppearanceSection />}
+              {activeTab === "notifications" && <NotificationsSection />}
+              {activeTab === "voicevideo" && <VoiceVideoSection />}
+              {activeTab === "sessions" && <SessionsSection />}
+              {activeTab === "about" && <AboutSection />}
+              {activeTab === "diagnostics" && <DiagnosticsSection />}
+            </div>
           </div>
         </div>
       </div>

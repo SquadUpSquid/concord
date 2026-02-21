@@ -5,6 +5,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { EmojiPicker } from "./EmojiPicker";
 import { searchEmojis, type EmojiEntry } from "@/lib/emojiData";
 import { Emoji } from "@/components/common/Emoji";
+import type { Message } from "@/stores/messageStore";
 
 interface MessageInputProps {
   roomId: string;
@@ -14,6 +15,11 @@ interface PendingFile {
   file: File;
   previewUrl: string | null;
 }
+
+type SendPayload =
+  | { kind: "text"; body: string }
+  | { kind: "reply"; body: string; replyTo: Message }
+  | { kind: "edit"; body: string; original: Message };
 
 export function MessageInput({ roomId }: MessageInputProps) {
   const [message, setMessage] = useState("");
@@ -30,6 +36,9 @@ export function MessageInput({ roomId }: MessageInputProps) {
   const dragCounter = useRef(0);
   const [emojiAutocomplete, setEmojiAutocomplete] = useState<EmojiEntry[]>([]);
   const [emojiSelectedIdx, setEmojiSelectedIdx] = useState(0);
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [failedPayload, setFailedPayload] = useState<SendPayload | null>(null);
   const replyingTo = useMessageStore((s) => s.replyingTo);
   const setReplyingTo = useMessageStore((s) => s.setReplyingTo);
   const editingMessage = useMessageStore((s) => s.editingMessage);
@@ -103,22 +112,15 @@ export function MessageInput({ roomId }: MessageInputProps) {
     }
   };
 
-  const handleSend = async () => {
-    const body = message.trim();
-    if (!body) return;
-
+  const executeSend = async (payload: SendPayload) => {
     const client = getMatrixClient();
-    if (!client) return;
-
-    setMessage("");
-    sendTyping(false);
-    if (typingTimeout.current) clearTimeout(typingTimeout.current);
-
+    if (!client) throw new Error("Matrix client not available.");
     try {
-      if (editingMessage) {
+      if (payload.kind === "edit") {
+        const { original, body } = payload;
         // Optimistically update the message locally so the edit appears immediately
-        const editEventId = editingMessage.eventId;
-        const editRoomId = editingMessage.roomId;
+        const editEventId = original.eventId;
+        const editRoomId = original.roomId;
         useMessageStore.getState().updateMessage(editRoomId, editEventId, {
           body,
           formattedBody: null,
@@ -139,9 +141,10 @@ export function MessageInput({ roomId }: MessageInputProps) {
             event_id: editEventId,
           },
         });
-      } else if (replyingTo) {
-        const replyBody = `> <${replyingTo.senderId}> ${replyingTo.body}\n\n${body}`;
-        const formattedReply = `<mx-reply><blockquote><a href="https://matrix.to/#/${replyingTo.roomId}/${replyingTo.eventId}">In reply to</a> <a href="https://matrix.to/#/${replyingTo.senderId}">${replyingTo.senderName}</a><br/>${replyingTo.body}</blockquote></mx-reply>${body}`;
+      } else if (payload.kind === "reply") {
+        const { replyTo, body } = payload;
+        const replyBody = `> <${replyTo.senderId}> ${replyTo.body}\n\n${body}`;
+        const formattedReply = `<mx-reply><blockquote><a href="https://matrix.to/#/${replyTo.roomId}/${replyTo.eventId}">In reply to</a> <a href="https://matrix.to/#/${replyTo.senderId}">${replyTo.senderName}</a><br/>${replyTo.body}</blockquote></mx-reply>${body}`;
 
         await client.sendEvent(roomId, "m.room.message" as any, {
           msgtype: "m.text",
@@ -150,26 +153,58 @@ export function MessageInput({ roomId }: MessageInputProps) {
           formatted_body: formattedReply,
           "m.relates_to": {
             "m.in_reply_to": {
-              event_id: replyingTo.eventId,
+              event_id: replyTo.eventId,
             },
           },
         });
         setReplyingTo(null);
       } else {
-        await client.sendTextMessage(roomId, body);
+        await client.sendTextMessage(roomId, payload.body);
       }
     } catch (err) {
-      console.error("Failed to send message:", err);
-      setMessage(body);
-      // If an edit failed, revert the optimistic update
-      if (editingMessage) {
-        useMessageStore.getState().updateMessage(editingMessage.roomId, editingMessage.eventId, {
-          body: editingMessage.body,
-          formattedBody: editingMessage.formattedBody,
-          isEdited: editingMessage.isEdited,
+      if (payload.kind === "edit") {
+        useMessageStore.getState().updateMessage(payload.original.roomId, payload.original.eventId, {
+          body: payload.original.body,
+          formattedBody: payload.original.formattedBody,
+          isEdited: payload.original.isEdited,
         });
-        setEditingMessage(editingMessage);
       }
+      throw err;
+    }
+  };
+
+  const handleSend = async (retryPayload?: SendPayload) => {
+    const payload: SendPayload | null = retryPayload ?? (() => {
+      const body = message.trim();
+      if (!body) return null;
+      if (editingMessage) return { kind: "edit", body, original: editingMessage };
+      if (replyingTo) return { kind: "reply", body, replyTo: replyingTo };
+      return { kind: "text", body };
+    })();
+
+    if (!payload) return;
+    setIsSending(true);
+    setSendError(null);
+    setFailedPayload(null);
+    setMessage("");
+    sendTyping(false);
+    if (typingTimeout.current) clearTimeout(typingTimeout.current);
+
+    try {
+      await executeSend(payload);
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      setSendError(err instanceof Error ? err.message : "Failed to send message.");
+      setFailedPayload(payload);
+      setMessage(payload.body);
+      if (payload.kind === "edit") {
+        setEditingMessage(payload.original);
+      }
+      if (payload.kind === "reply") {
+        setReplyingTo(payload.replyTo);
+      }
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -514,6 +549,7 @@ export function MessageInput({ roomId }: MessageInputProps) {
           onPaste={handlePaste}
           placeholder={editingMessage ? "Edit your message..." : "Send a message..."}
           className="flex-1 bg-transparent py-3 text-sm text-text-primary outline-none placeholder:text-text-muted"
+          disabled={isSending}
         />
         <div className="relative" ref={emojiRef}>
           <button
@@ -534,6 +570,29 @@ export function MessageInput({ roomId }: MessageInputProps) {
           )}
         </div>
       </div>
+      {sendError && failedPayload && (
+        <div className="mt-2 flex items-center justify-between rounded border border-red/35 bg-red/10 px-3 py-2 text-xs text-red">
+          <span className="truncate pr-3">Message failed to send: {sendError}</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleSend(failedPayload)}
+              disabled={isSending}
+              className="rounded border border-red/35 px-2 py-1 text-red hover:bg-red/10 disabled:opacity-50"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => {
+                setSendError(null);
+                setFailedPayload(null);
+              }}
+              className="rounded px-2 py-1 text-text-muted hover:text-text-primary"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

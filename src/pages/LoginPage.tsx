@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
 import { loginToMatrix, registerToMatrix, initMatrixClient } from "@/lib/matrix";
 import { registerEventHandlers } from "@/lib/matrixEventHandlers";
 import { TitleBar } from "@/components/layout/TitleBar";
 
 const MATRIX_ORG_SIGNUP_URL = "https://app.element.io/#/register";
+type RegisterSupport = "unknown" | "available" | "disabled" | "unsupported" | "error";
 
 export function LoginPage() {
   const [homeserver, setHomeserver] = useState("https://matrix.org");
@@ -18,6 +19,8 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordHelp, setShowPasswordHelp] = useState(false);
+  const [registerSupport, setRegisterSupport] = useState<RegisterSupport>("unknown");
+  const [probeStatus, setProbeStatus] = useState<string | null>(null);
   const homeserverHost = useMemo(() => {
     try {
       return new URL(homeserver).hostname.toLowerCase();
@@ -39,6 +42,62 @@ export function LoginPage() {
     && passwordChecks.upper
     && passwordChecks.number
     && passwordChecks.symbol;
+  const canCreateInApp = registerSupport === "unknown" || registerSupport === "available";
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      if (!homeserverHost) {
+        if (!cancelled) {
+          setRegisterSupport("error");
+          setProbeStatus("Invalid homeserver URL.");
+        }
+        return;
+      }
+
+      setProbeStatus("Checking homeserver capabilities...");
+      try {
+        const registerResp = await fetch(`${homeserver.replace(/\/$/, "")}/_matrix/client/v3/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        const data = await registerResp.json().catch(() => ({} as Record<string, unknown>));
+
+        if (registerResp.ok || registerResp.status === 401) {
+          if (!cancelled) {
+            setRegisterSupport("available");
+            setProbeStatus("This homeserver supports registration flows.");
+          }
+          return;
+        }
+
+        const err = typeof data?.error === "string" ? data.error : "";
+        if (registerResp.status === 403 && err.includes("Registration has been disabled")) {
+          if (!cancelled) {
+            setRegisterSupport("disabled");
+            setProbeStatus("This homeserver disables direct registration.");
+          }
+          return;
+        }
+
+        if (!cancelled) {
+          setRegisterSupport("unsupported");
+          setProbeStatus("Registration exists but may require unsupported auth steps.");
+        }
+      } catch {
+        if (!cancelled) {
+          setRegisterSupport("error");
+          setProbeStatus("Could not probe homeserver registration. You can still try logging in.");
+        }
+      }
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [homeserver, homeserverHost]);
 
   const openMatrixOrgSignup = async () => {
     window.open(MATRIX_ORG_SIGNUP_URL, "_blank", "noopener,noreferrer");
@@ -136,9 +195,19 @@ export function LoginPage() {
           <p className="mb-6 text-center text-sm text-text-muted">
             {showCreateAccount ? "Register a new Matrix account" : "Log in with your Matrix account"}
           </p>
+          {probeStatus && (
+            <div className="mb-4 rounded-sm border border-bg-active bg-bg-secondary px-3 py-2 text-xs text-text-muted">
+              {probeStatus}
+            </div>
+          )}
           {showCreateAccount && isMatrixOrgHomeserver && (
             <div className="mb-4 rounded-sm border border-bg-active bg-bg-secondary p-3 text-xs text-text-secondary">
               matrix.org signups use a web-based flow. Click Create Account below to open signup in your browser, then come back to log in.
+            </div>
+          )}
+          {showCreateAccount && !isMatrixOrgHomeserver && registerSupport === "disabled" && (
+            <div className="mb-4 rounded-sm border border-yellow/30 bg-yellow/10 p-3 text-xs text-yellow">
+              This homeserver has disabled direct signup. Use your server's web signup (or ask an admin), then log in here.
             </div>
           )}
 
@@ -255,7 +324,10 @@ export function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading || (showCreateAccount && !isMatrixOrgHomeserver && !isPasswordStrong)}
+              disabled={
+                loading ||
+                (showCreateAccount && !isMatrixOrgHomeserver && (!isPasswordStrong || !canCreateInApp))
+              }
               className="mt-2 w-full rounded-sm bg-accent p-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
             >
               {loading

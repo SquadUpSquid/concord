@@ -11,6 +11,8 @@ import { UserPanel } from "@/components/sidebar/UserPanel";
 import { QuickSwitcher } from "@/components/common/QuickSwitcher";
 import { SessionVerificationBanner } from "@/components/verification/SessionVerificationBanner";
 import { VerificationFlowModal } from "@/components/verification/VerificationFlowModal";
+import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 /**
  * Lightweight error boundary that silently swallows render errors in a
@@ -49,6 +51,7 @@ export function AppLayout() {
   const showMembers = useUiStore((s) => s.showMemberSidebar);
   const [showSwitcher, setShowSwitcher] = useState(false);
   const [visible, setVisible] = useState(false);
+  const onboardingCompleted = useSettingsStore((s) => s.onboardingCompleted);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -105,6 +108,7 @@ export function AppLayout() {
       </SectionGuard>
       <RoomContextMenu />
       {showSwitcher && <QuickSwitcher onClose={() => setShowSwitcher(false)} />}
+      {!onboardingCompleted && <OnboardingWizard />}
     </div>
   );
 }

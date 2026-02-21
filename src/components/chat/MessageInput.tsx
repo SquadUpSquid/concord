@@ -116,6 +116,16 @@ export function MessageInput({ roomId }: MessageInputProps) {
 
     try {
       if (editingMessage) {
+        // Optimistically update the message locally so the edit appears immediately
+        const editEventId = editingMessage.eventId;
+        const editRoomId = editingMessage.roomId;
+        useMessageStore.getState().updateMessage(editRoomId, editEventId, {
+          body,
+          formattedBody: null,
+          isEdited: true,
+        });
+        setEditingMessage(null);
+
         // Send edit via m.replace relation
         await client.sendEvent(roomId, "m.room.message" as any, {
           msgtype: "m.text",
@@ -126,10 +136,9 @@ export function MessageInput({ roomId }: MessageInputProps) {
           },
           "m.relates_to": {
             rel_type: "m.replace",
-            event_id: editingMessage.eventId,
+            event_id: editEventId,
           },
         });
-        setEditingMessage(null);
       } else if (replyingTo) {
         const replyBody = `> <${replyingTo.senderId}> ${replyingTo.body}\n\n${body}`;
         const formattedReply = `<mx-reply><blockquote><a href="https://matrix.to/#/${replyingTo.roomId}/${replyingTo.eventId}">In reply to</a> <a href="https://matrix.to/#/${replyingTo.senderId}">${replyingTo.senderName}</a><br/>${replyingTo.body}</blockquote></mx-reply>${body}`;
@@ -152,6 +161,15 @@ export function MessageInput({ roomId }: MessageInputProps) {
     } catch (err) {
       console.error("Failed to send message:", err);
       setMessage(body);
+      // If an edit failed, revert the optimistic update
+      if (editingMessage) {
+        useMessageStore.getState().updateMessage(editingMessage.roomId, editingMessage.eventId, {
+          body: editingMessage.body,
+          formattedBody: editingMessage.formattedBody,
+          isEdited: editingMessage.isEdited,
+        });
+        setEditingMessage(editingMessage);
+      }
     }
   };
 

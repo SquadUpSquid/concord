@@ -213,7 +213,7 @@ export async function registerToMatrix(
     const matrixErr = err as MatrixLikeError;
     const rawError = matrixErr.data?.error ?? matrixErr.message ?? "";
     if (rawError.includes("Registration has been disabled")) {
-      throw new Error("This homeserver has account registration disabled. Create the account through your server admin or use another homeserver.");
+      throw new Error("This homeserver does not allow direct password signup via /register. On matrix.org, create an account through the web signup flow (external auth) and then log in here.");
     }
     const uia = matrixErr.data;
     const session = uia?.session;

@@ -3,6 +3,9 @@ import { useAuthStore } from "@/stores/authStore";
 import { loginToMatrix, registerToMatrix, initMatrixClient } from "@/lib/matrix";
 import { registerEventHandlers } from "@/lib/matrixEventHandlers";
 import { TitleBar } from "@/components/layout/TitleBar";
+import { openUrl } from "@tauri-apps/plugin-opener";
+
+const MATRIX_ORG_SIGNUP_URL = "https://app.element.io/#/register";
 
 export function LoginPage() {
   const [homeserver, setHomeserver] = useState("https://matrix.org");
@@ -15,6 +18,16 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordHelp, setShowPasswordHelp] = useState(false);
+  const homeserverHost = useMemo(() => {
+    try {
+      return new URL(homeserver).hostname.toLowerCase();
+    } catch {
+      return "";
+    }
+  }, [homeserver]);
+  const isMatrixOrgHomeserver = homeserverHost === "matrix.org";
+  const needsLocalRegistrationFields = !(showCreateAccount && isMatrixOrgHomeserver);
   const passwordChecks = useMemo(() => ({
     length: password.length >= 8,
     lower: /[a-z]/.test(password),
@@ -27,6 +40,14 @@ export function LoginPage() {
     && passwordChecks.upper
     && passwordChecks.number
     && passwordChecks.symbol;
+
+  const openMatrixOrgSignup = async () => {
+    try {
+      await openUrl(MATRIX_ORG_SIGNUP_URL);
+    } catch {
+      window.open(MATRIX_ORG_SIGNUP_URL, "_blank", "noopener,noreferrer");
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,6 +98,11 @@ export function LoginPage() {
     setLoading(true);
 
     try {
+      if (isMatrixOrgHomeserver) {
+        await openMatrixOrgSignup();
+        setRegisterSuccess("Opened matrix.org signup in your browser. After creating your account there, come back and log in here.");
+        return;
+      }
       if (!isPasswordStrong) {
         throw new Error("Password is too weak. Use at least 8 chars with upper/lowercase, number, and symbol.");
       }
@@ -115,6 +141,11 @@ export function LoginPage() {
           <p className="mb-6 text-center text-sm text-text-muted">
             {showCreateAccount ? "Register a new Matrix account" : "Log in with your Matrix account"}
           </p>
+          {showCreateAccount && isMatrixOrgHomeserver && (
+            <div className="mb-4 rounded-sm border border-bg-active bg-bg-secondary p-3 text-xs text-text-secondary">
+              matrix.org signups use a web-based flow. Click Create Account below to open signup in your browser, then come back to log in.
+            </div>
+          )}
 
           <form onSubmit={showCreateAccount ? handleCreateAccount : handleLogin} className="flex flex-col gap-4">
             <div>
@@ -141,7 +172,7 @@ export function LoginPage() {
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full rounded-sm bg-bg-input p-2.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent"
                 placeholder="username"
-                required
+                required={needsLocalRegistrationFields}
               />
             </div>
 
@@ -155,7 +186,7 @@ export function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-sm bg-bg-input p-2.5 text-sm text-text-primary outline-none focus:ring-2 focus:ring-accent"
                 placeholder="Password"
-                required
+                required={needsLocalRegistrationFields}
               />
             </div>
             <label className="mt-[-8px] flex cursor-pointer items-center gap-2 text-xs text-text-muted">
@@ -168,7 +199,7 @@ export function LoginPage() {
               Show password
             </label>
 
-            {showCreateAccount && (
+            {showCreateAccount && !isMatrixOrgHomeserver && (
               <>
                 <div>
                   <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">
@@ -196,15 +227,26 @@ export function LoginPage() {
                     placeholder="Required on some homeservers"
                   />
                 </div>
-                <div className="rounded-sm bg-bg-secondary p-3 text-xs text-text-muted">
-                  <p className="mb-2 font-semibold uppercase text-text-secondary">Password strength</p>
-                  <ul className="space-y-1">
-                    <li className={passwordChecks.length ? "text-green" : "text-text-muted"}>At least 8 characters</li>
-                    <li className={passwordChecks.lower ? "text-green" : "text-text-muted"}>At least one lowercase letter</li>
-                    <li className={passwordChecks.upper ? "text-green" : "text-text-muted"}>At least one uppercase letter</li>
-                    <li className={passwordChecks.number ? "text-green" : "text-text-muted"}>At least one number</li>
-                    <li className={passwordChecks.symbol ? "text-green" : "text-text-muted"}>At least one symbol</li>
-                  </ul>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordHelp((v) => !v)}
+                    className="text-xs text-text-muted underline-offset-2 hover:text-text-secondary hover:underline"
+                  >
+                    Password requirements
+                  </button>
+                  {showPasswordHelp && (
+                    <div className="absolute left-0 z-20 mt-2 w-72 rounded-md border border-bg-active bg-bg-secondary p-3 text-xs shadow-lg">
+                      <p className="mb-2 font-semibold uppercase text-text-secondary">Password strength</p>
+                      <ul className="space-y-1 text-text-muted">
+                        <li className={passwordChecks.length ? "text-green" : "text-text-muted"}>At least 8 characters</li>
+                        <li className={passwordChecks.lower ? "text-green" : "text-text-muted"}>At least one lowercase letter</li>
+                        <li className={passwordChecks.upper ? "text-green" : "text-text-muted"}>At least one uppercase letter</li>
+                        <li className={passwordChecks.number ? "text-green" : "text-text-muted"}>At least one number</li>
+                        <li className={passwordChecks.symbol ? "text-green" : "text-text-muted"}>At least one symbol</li>
+                      </ul>
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -218,12 +260,12 @@ export function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading || (showCreateAccount && !isPasswordStrong)}
+              disabled={loading || (showCreateAccount && !isMatrixOrgHomeserver && !isPasswordStrong)}
               className="mt-2 w-full rounded-sm bg-accent p-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
             >
               {loading
-                ? (showCreateAccount ? "Creating account..." : "Logging in...")
-                : (showCreateAccount ? "Create Account" : "Log In")}
+                ? (showCreateAccount ? (isMatrixOrgHomeserver ? "Opening signup..." : "Creating account...") : "Logging in...")
+                : (showCreateAccount ? (isMatrixOrgHomeserver ? "Create Account in Browser" : "Create Account") : "Log In")}
             </button>
 
             <button
@@ -235,6 +277,7 @@ export function LoginPage() {
                 setPassword("");
                 setConfirmPassword("");
                 setRegistrationToken("");
+                setShowPasswordHelp(false);
                 setShowCreateAccount((v) => !v);
               }}
               className="w-full rounded-sm border border-bg-active p-2.5 text-sm text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"

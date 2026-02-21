@@ -64,6 +64,18 @@ export function CreateRoomModal() {
           content: { algorithm: "m.megolm.v1.aes-sha2" },
         });
       }
+      const isSpacePublicChannel = Boolean(selectedSpaceId && isPublic);
+      if (isSpacePublicChannel && selectedSpaceId) {
+        // Space public channels should be joinable by space members without exposing the room globally.
+        initialState.push({
+          type: "m.room.join_rules",
+          state_key: "",
+          content: {
+            join_rule: "restricted",
+            allow: [{ type: "m.room_membership", room_id: selectedSpaceId }],
+          },
+        });
+      }
 
       // Use Element's standard room type for voice/video rooms
       // io.element.video is recognized by Element and other Matrix clients
@@ -75,8 +87,8 @@ export function CreateRoomModal() {
       const { room_id } = await client.createRoom({
         name: name.trim(),
         topic: topic.trim() || undefined,
-        visibility: isPublic ? Visibility.Public : Visibility.Private,
-        preset: isPublic ? Preset.PublicChat : Preset.PrivateChat,
+        visibility: isSpacePublicChannel ? Visibility.Private : isPublic ? Visibility.Public : Visibility.Private,
+        preset: isSpacePublicChannel ? Preset.PrivateChat : isPublic ? Preset.PublicChat : Preset.PrivateChat,
         initial_state: initialState,
         creation_content: Object.keys(creationContent).length > 0 ? creationContent : undefined,
       });
@@ -233,7 +245,13 @@ export function CreateRoomModal() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-text-primary">Private Channel</p>
-            <p className="text-xs text-text-muted">Only invited members can join</p>
+            <p className="text-xs text-text-muted">
+              {!isPublic
+                ? "Only invited members can join"
+                : selectedSpaceId
+                  ? "All space members can join"
+                  : "Anyone can join"}
+            </p>
           </div>
           <button
             onClick={() => setIsPublic(!isPublic)}

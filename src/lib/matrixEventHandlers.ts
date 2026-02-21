@@ -14,6 +14,50 @@ import { prefetchAvatars } from "@/utils/useMatrixImage";
 import { useCustomEmojiStore } from "@/stores/customEmojiStore";
 
 const decryptListenerAttached = new WeakSet<MatrixEvent>();
+const autoJoinAttemptedChildren = new Set<string>();
+
+async function autoJoinSpaceChildren(client: MatrixClient, spaceRoom: Room): Promise<void> {
+  const myUserId = client.getUserId();
+  if (!myUserId) return;
+  if (!spaceRoom.isSpaceRoom()) return;
+
+  const myMembership = spaceRoom.getMember(myUserId)?.membership;
+  if (myMembership !== "join") return;
+
+  const childEvents = spaceRoom.currentState.getStateEvents("m.space.child");
+  const joinTasks: Promise<void>[] = [];
+
+  for (const ev of childEvents) {
+    const childId = ev.getStateKey();
+    if (!childId) continue;
+
+    const localChild = client.getRoom(childId);
+    if (localChild?.isSpaceRoom()) continue;
+    const childMembership = localChild?.getMember(myUserId)?.membership;
+    if (childMembership === "join" || childMembership === "invite") continue;
+
+    const attemptKey = `${spaceRoom.roomId}|${childId}`;
+    if (autoJoinAttemptedChildren.has(attemptKey)) continue;
+    autoJoinAttemptedChildren.add(attemptKey);
+
+    const viaServers = Array.isArray(ev.getContent()?.via)
+      ? ev.getContent().via.filter((via: unknown): via is string => typeof via === "string")
+      : [];
+
+    joinTasks.push(
+      client.joinRoom(childId, viaServers.length > 0 ? ({ viaServers } as any) : undefined)
+        .then(() => {})
+        .catch((err) => {
+          // Best-effort auto-join: invite-only/private children will fail and are expected.
+          console.debug("[space] auto-join skipped child", childId, err);
+        })
+    );
+  }
+
+  if (joinTasks.length > 0) {
+    await Promise.all(joinTasks);
+  }
+}
 
 function registerDecryptionRefresh(event: MatrixEvent, roomId: string, client: MatrixClient): void {
   if (!event.isEncrypted()) return;
@@ -322,6 +366,16 @@ async function applySyncReady(client: MatrixClient, hasInitiallySyncedRef: { cur
     for (const roomId of rooms.keys()) {
       emojiStore.loadRoomEmojis(roomId);
     }
+
+    const joinedSpaces = client.getRooms().filter((room) => {
+      if (!room.isSpaceRoom()) return false;
+      const myUserId = client.getUserId();
+      if (!myUserId) return false;
+      return room.getMember(myUserId)?.membership === "join";
+    });
+    for (const space of joinedSpaces) {
+      autoJoinSpaceChildren(client, space).catch(() => {});
+    }
   }
 
   useRoomStore.getState().setSyncState("PREPARED");
@@ -504,6 +558,9 @@ export function registerEventHandlers(client: MatrixClient): void {
         const rooms = new Map(useRoomStore.getState().rooms);
         rooms.set(room.roomId, summary);
         useRoomStore.getState().setRooms(rooms);
+        if (membership === "join" && room.isSpaceRoom()) {
+          autoJoinSpaceChildren(client, room).catch(() => {});
+        }
       } else if (membership === "leave") {
         useRoomStore.getState().removeRoom(room.roomId);
       }
@@ -563,6 +620,13 @@ export function registerEventHandlers(client: MatrixClient): void {
           const existing = useRoomStore.getState().rooms.get(childId);
           if (existing?.parentSpaceId === roomId) {
             useRoomStore.getState().updateRoom(childId, { parentSpaceId: null });
+          }
+        }
+
+        if (hasVia) {
+          const spaceRoom = client.getRoom(roomId);
+          if (spaceRoom?.isSpaceRoom()) {
+            autoJoinSpaceChildren(client, spaceRoom).catch(() => {});
           }
         }
       }

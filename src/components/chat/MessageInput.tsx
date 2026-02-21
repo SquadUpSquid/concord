@@ -503,10 +503,7 @@ export function MessageInput({ roomId }: MessageInputProps) {
             className="ml-2 rounded p-1 text-text-muted hover:text-text-primary"
             title="Emoji"
           >
-            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" />
-            </svg>
+            <Emoji emoji={"\u{1F642}"} size={20} />
           </button>
           {showEmojiPicker && (
             <div className="absolute bottom-full right-0 z-10 mb-2">

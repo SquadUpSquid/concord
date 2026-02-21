@@ -221,7 +221,12 @@ function attachGroupCallListeners(
 
   groupCall.on(GroupCallEvent.Error, (error) => {
     console.error("Group call error:", error);
+    const roomId = get().activeCallRoomId;
     get().leaveCall();
+    set({
+      activeCallRoomId: roomId,
+      error: toUserFriendlyError(error),
+    });
   });
 }
 
@@ -280,6 +285,14 @@ function toUserFriendlyError(err: unknown): string {
 
   if (msg.includes("power level") || msg.includes("not permitted") || msg.includes("403")) {
     return "You don't have permission to start a call in this room. Ask an admin to grant you permission, or wait for someone else to start the call.";
+  }
+
+  if (msg.includes("PC") || msg.includes("PeerConnection") || msg.includes("peer connection") || msg.includes("ICE")) {
+    return "Could not establish a connection to other participants. This may be caused by network restrictions or missing TURN server configuration.";
+  }
+
+  if (msg.includes("getUserMedia") || msg.includes("media devices")) {
+    return "Could not access media devices. Please check that your microphone is connected and permissions are granted.";
   }
 
   return msg || "Failed to join voice channel. Please try again.";

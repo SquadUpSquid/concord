@@ -13,7 +13,7 @@ import { getMatrixClient } from "@/lib/matrix";
 import { mxcToHttp } from "@/utils/matrixHelpers";
 import { useSettingsStore } from "@/stores/settingsStore";
 import {
-  getLivekitFocus,
+  getLivekitFocusAsync,
   fetchLivekitToken,
   joinLivekitCall,
   leaveLivekitCall,
@@ -221,7 +221,12 @@ function attachGroupCallListeners(
 
   groupCall.on(GroupCallEvent.Error, (error) => {
     console.error("Group call error:", error);
+    const roomId = get().activeCallRoomId;
     get().leaveCall();
+    set({
+      activeCallRoomId: roomId,
+      error: toUserFriendlyError(error),
+    });
   });
 }
 
@@ -282,6 +287,14 @@ function toUserFriendlyError(err: unknown): string {
     return "You don't have permission to start a call in this room. Ask an admin to grant you permission, or wait for someone else to start the call.";
   }
 
+  if (msg.includes("PC") || msg.includes("PeerConnection") || msg.includes("peer connection") || msg.includes("ICE")) {
+    return "Could not establish a connection to other participants. This may be caused by network restrictions or missing TURN server configuration.";
+  }
+
+  if (msg.includes("getUserMedia") || msg.includes("media devices")) {
+    return "Could not access media devices. Please check that your microphone is connected and permissions are granted.";
+  }
+
   return msg || "Failed to join voice channel. Please try again.";
 }
 
@@ -316,8 +329,8 @@ export const useCallStore = create<CallState>()((set, get) => ({
         });
       }
 
-      // --- Check if the room uses LiveKit ---
-      const lkFocus = getLivekitFocus(client, roomId);
+      // --- Check if the room uses LiveKit (async to discover via well-known) ---
+      const lkFocus = await getLivekitFocusAsync(client, roomId);
 
       if (lkFocus) {
         // LiveKit path

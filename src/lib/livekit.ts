@@ -45,6 +45,53 @@ export interface LivekitFocus {
   livekitAlias: string;
 }
 
+/** Cached well-known LiveKit focus so we only fetch once per session. */
+let cachedWellKnownFocus: LivekitFocus | null | undefined = undefined;
+
+/**
+ * Fetch the homeserver's .well-known to discover LiveKit SFU configuration.
+ * Caches the result for the session.
+ */
+async function fetchWellKnownLivekitFocus(
+  client: MatrixClient,
+  roomId: string,
+): Promise<LivekitFocus | null> {
+  if (cachedWellKnownFocus !== undefined) {
+    return cachedWellKnownFocus
+      ? { ...cachedWellKnownFocus, livekitAlias: roomId }
+      : null;
+  }
+
+  try {
+    const baseUrl = client.getHomeserverUrl().replace(/\/+$/, "");
+    // Try the well-known endpoint for RTC foci
+    const wkRes = await tauriFetch(
+      `${baseUrl}/.well-known/matrix/client`,
+      { method: "GET" },
+    ).catch(() => null);
+
+    if (wkRes?.ok) {
+      const wk = await wkRes.json();
+      const foci: any[] =
+        wk?.["org.matrix.msc4143.rtc.foci"] ?? [];
+      for (const f of foci) {
+        if (f?.type === "livekit" && typeof f.livekit_service_url === "string") {
+          cachedWellKnownFocus = {
+            livekitServiceUrl: f.livekit_service_url,
+            livekitAlias: roomId,
+          };
+          return cachedWellKnownFocus;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[livekit] Failed to fetch well-known LiveKit focus:", err);
+  }
+
+  cachedWellKnownFocus = null;
+  return null;
+}
+
 /**
  * Inspect a room's call-member state events to find a LiveKit focus.
  * Returns null if the room doesn't use LiveKit.
@@ -56,6 +103,7 @@ export function getLivekitFocus(
   const room = client.getRoom(roomId);
   if (!room) return null;
 
+  // Check call member state events first
   const eventTypes = [
     "org.matrix.msc3401.call.member",
     "m.call.member",
@@ -74,7 +122,30 @@ export function getLivekitFocus(
       }
     }
   }
+
+  // Check cached well-known (synchronous — only returns if already fetched)
+  if (cachedWellKnownFocus) {
+    return { ...cachedWellKnownFocus, livekitAlias: roomId };
+  }
+
   return null;
+}
+
+/**
+ * Async version that also checks the homeserver well-known if state events
+ * don't have LiveKit focus info. This ensures the first user joining an empty
+ * room can discover LiveKit without existing state events.
+ */
+export async function getLivekitFocusAsync(
+  client: MatrixClient,
+  roomId: string,
+): Promise<LivekitFocus | null> {
+  // Try synchronous check first (state events + cache)
+  const syncResult = getLivekitFocus(client, roomId);
+  if (syncResult) return syncResult;
+
+  // Fall back to well-known discovery
+  return fetchWellKnownLivekitFocus(client, roomId);
 }
 
 // ---------------------------------------------------------------------------

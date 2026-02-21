@@ -50,7 +50,6 @@
 - [LiveKit](https://livekit.io) SFU integration for voice and video calls
 - Mic, camera, screenshare, speaker detection, and participant grid
 - Toggleable, resizable text chat panel in voice channels
-- Legacy GroupCall fallback
 
 **Organization & Customization**
 - Drag-and-drop channel and section reordering (admin/moderator)
@@ -211,7 +210,22 @@ sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
   gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-nice
 ```
 
-> **Heads-up — Voice/Video on Linux:** Ubuntu and Debian ship WebKitGTK without WebRTC enabled. Voice and video calls work fully on **Windows** and **macOS**. On Linux you need a custom WebKitGTK build with `-DENABLE_WEB_RTC=ON` — see [this Tauri discussion](https://github.com/tauri-apps/tauri/discussions/8426) for details. Everything else (text chat, spaces, DMs, etc.) works fine.
+> **Linux Voice/Video Compatibility**
+>
+> Voice and video calls require WebRTC support in WebKitGTK. Most Linux
+> distributions (including Ubuntu and Debian) ship WebKitGTK **without**
+> WebRTC enabled, so voice/video calls are currently **not supported on Linux**.
+> Text chat, spaces, DMs, and everything else works fine.
+>
+> | Distro               | Text & Messaging | Voice & Video |
+> |----------------------|------------------|---------------|
+> | Arch Linux           | Yes              | Yes           |
+> | Fedora               | Yes              | Yes           |
+> | Ubuntu / Debian      | Yes              | No            |
+>
+> Native Linux voice/video support (via the LiveKit Rust SDK) is planned.
+> See [this Tauri discussion](https://github.com/tauri-apps/tauri/discussions/8426)
+> for background on the WebKitGTK limitation.
 
 #### 4. Verify everything
 

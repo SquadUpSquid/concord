@@ -7,6 +7,7 @@ import { TitleBar } from "./TitleBar";
 import { useUiStore } from "@/stores/uiStore";
 import { ModalRoot } from "@/components/modals/ModalRoot";
 import { RoomContextMenu } from "@/components/sidebar/RoomContextMenu";
+import { UserPanel } from "@/components/sidebar/UserPanel";
 import { QuickSwitcher } from "@/components/common/QuickSwitcher";
 import { SessionVerificationBanner } from "@/components/verification/SessionVerificationBanner";
 import { VerificationFlowModal } from "@/components/verification/VerificationFlowModal";
@@ -76,12 +77,19 @@ export function AppLayout() {
         <SessionVerificationBanner />
       </SectionGuard>
       <div className="flex flex-1 overflow-hidden">
-        <SectionGuard name="ServerSidebar">
-          <ServerSidebar />
-        </SectionGuard>
-        <SectionGuard name="ChannelSidebar">
-          <ChannelSidebar />
-        </SectionGuard>
+        <div className="flex min-h-0 flex-col bg-bg-secondary">
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            <SectionGuard name="ServerSidebar">
+              <ServerSidebar />
+            </SectionGuard>
+            <SectionGuard name="ChannelSidebar">
+              <ChannelSidebar />
+            </SectionGuard>
+          </div>
+          <SectionGuard name="UserPanel">
+            <UserPanel />
+          </SectionGuard>
+        </div>
         <SectionGuard name="ChatView">
           <ChatView />
         </SectionGuard>

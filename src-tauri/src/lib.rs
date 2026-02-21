@@ -49,7 +49,7 @@ async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
@@ -102,7 +102,23 @@ pub fn run() {
             }
 
             Ok(())
-        })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        });
+
+    if let Err(err) = app.run(tauri::generate_context!()) {
+        eprintln!("Concord failed to start: {err}");
+        eprintln!();
+        eprintln!("Troubleshooting:");
+        eprintln!("1) Start with `npm run tauri dev` from the repo root (not plain `cargo run`).");
+        eprintln!("2) Ensure the frontend dev server is reachable at http://localhost:5173.");
+        eprintln!("3) If you're on Linux/WSL, ensure a GUI session is available before launching.");
+
+        #[cfg(target_os = "linux")]
+        {
+            if std::env::var_os("WSL_DISTRO_NAME").is_some() {
+                eprintln!("4) WSL detected. If GUI apps fail, run `wsl --shutdown`, reopen WSL, then retry.");
+            }
+        }
+
+        std::process::exit(1);
+    }
 }

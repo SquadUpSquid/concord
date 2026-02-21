@@ -7,11 +7,7 @@ import { ChannelItem } from "./ChannelItem";
 import { DmItem } from "./DmItem";
 import { InviteItem } from "./InviteItem";
 import { useAuthStore } from "@/stores/authStore";
-import { usePresenceStore } from "@/stores/presenceStore";
-import { Avatar } from "@/components/common/Avatar";
-import { ConnectedCallBar } from "@/components/voice/ConnectedCallBar";
 import { getMatrixClient } from "@/lib/matrix";
-import { mxcToHttp } from "@/utils/matrixHelpers";
 import { POWER_LEVEL_MODERATOR } from "@/utils/roles";
 import { EmojiText } from "@/components/common/Emoji";
 
@@ -57,10 +53,6 @@ export function ChannelSidebar() {
   const [newCatName, setNewCatName] = useState("");
   const [renamingCatId, setRenamingCatId] = useState<string | null>(null);
   const [renameCatName, setRenameCatName] = useState("");
-
-  const myPresence = usePresenceStore(
-    (s) => s.presenceByUser.get(userId ?? "")?.presence ?? "online"
-  );
 
   const pendingInvites = Array.from(rooms.values()).filter(
     (r) => r.membership === "invite"
@@ -277,15 +269,6 @@ export function ChannelSidebar() {
   const spaceName = selectedSpaceId
     ? rooms.get(selectedSpaceId)?.name ?? "Space"
     : "Direct Messages";
-
-  // Get user's display name and avatar from the Matrix client
-  const client = getMatrixClient();
-  const user = client?.getUser(userId ?? "");
-  const displayName = user?.displayName ?? userId ?? "User";
-  const avatarUrl = user && client
-    ? mxcToHttp(user.avatarUrl ?? null, client.getHomeserverUrl())
-    : null;
-  const mxcAvatarUrl = user?.avatarUrl ?? null;
 
   return (
     <div className="flex w-60 flex-col bg-bg-secondary">
@@ -581,44 +564,6 @@ export function ChannelSidebar() {
             )}
           </>
         )}
-      </div>
-
-      {/* Voice connection bar */}
-      <ConnectedCallBar />
-
-      {/* User section */}
-      <div className="flex items-center gap-2 border-t border-bg-tertiary bg-bg-floating/50 px-2.5 py-2">
-        <button
-          onClick={() => openModal("settings")}
-          className="flex-shrink-0 cursor-pointer rounded-full transition-opacity hover:opacity-80"
-          title="User settings"
-        >
-          <Avatar
-            name={displayName}
-            url={avatarUrl}
-            mxcUrl={mxcAvatarUrl}
-            size={32}
-            presence={myPresence}
-          />
-        </button>
-        <div className="flex-1 overflow-hidden">
-          <p className="truncate text-sm font-medium text-text-primary">
-            {displayName}
-          </p>
-          <p className="truncate text-[10px] text-text-muted">
-            {userId}
-          </p>
-        </div>
-        <button
-          onClick={() => openModal("settings")}
-          className="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
-          title="User settings"
-        >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
-          </svg>
-        </button>
       </div>
     </div>
   );

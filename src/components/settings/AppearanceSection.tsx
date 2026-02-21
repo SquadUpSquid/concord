@@ -12,8 +12,8 @@ const THEMES: { id: ThemeMode; label: string; colors: { bg: string; sidebar: str
 ];
 
 const FONT_SIZES: { id: FontSize; label: string; px: number }[] = [
-  { id: "small", label: "Small", px: 13 },
-  { id: "normal", label: "Normal", px: 15 },
+  { id: "small", label: "Small", px: 14 },
+  { id: "normal", label: "Normal", px: 16 },
   { id: "large", label: "Large", px: 18 },
 ];
 
@@ -140,7 +140,8 @@ export function AppearanceSection() {
 
       {/* Font Size */}
       <div className="rounded-lg bg-bg-secondary p-5">
-        <h3 className="mb-4 text-sm font-bold uppercase text-text-secondary">Chat Font Size</h3>
+        <h3 className="mb-1 text-sm font-bold uppercase text-text-secondary">Font Size</h3>
+        <p className="mb-4 text-xs text-text-muted">Scales text across the whole app.</p>
         <div className="flex items-center gap-3">
           {FONT_SIZES.map((fs) => (
             <button

@@ -314,14 +314,17 @@ async function applySyncReady(client: MatrixClient, hasInitiallySyncedRef: { cur
 }
 
 let _registeredClient: MatrixClient | null = null;
+let _verificationCleanup: (() => void) | null = null;
 
 export function registerEventHandlers(client: MatrixClient): void {
   // Prevent registering duplicate listeners on the same client instance
   // (can happen when React StrictMode double-fires effects).
   if (_registeredClient === client) return;
+  _verificationCleanup?.();
+  _verificationCleanup = null;
   _registeredClient = client;
 
-  subscribeVerificationEvents(client);
+  _verificationCleanup = subscribeVerificationEvents(client);
 
   const hasInitiallySyncedRef = { current: false };
 

@@ -1,8 +1,9 @@
 import type { MatrixClient } from "matrix-js-sdk";
+import { CryptoEvent } from "matrix-js-sdk/lib/crypto-api";
+import type { VerificationRequest } from "matrix-js-sdk/lib/crypto-api/verification";
 import { useVerificationStore } from "@/stores/verificationStore";
 
-/** CryptoEvent.VerificationRequestReceived - use string so we don't depend on crypto-api export */
-const VERIFICATION_REQUEST_RECEIVED = "crypto.verificationRequestReceived";
+const VERIFICATION_REQUEST_RECEIVED = CryptoEvent.VerificationRequestReceived;
 
 /**
  * Check whether the current device is verified (cross-signed).
@@ -35,7 +36,7 @@ export async function checkCurrentDeviceVerified(
  */
 export async function requestOwnUserVerification(
   client: MatrixClient
-): Promise<import("matrix-js-sdk/lib/crypto-api/verification").VerificationRequest | null> {
+): Promise<VerificationRequest | null> {
   const crypto = client.getCrypto();
   if (!crypto) return null;
   try {
@@ -48,8 +49,11 @@ export async function requestOwnUserVerification(
   }
 }
 
-/** Stored handler reference so we can remove it on cleanup. */
-let _verificationHandler: ((r: unknown) => void) | null = null;
+/** Stored references so we can remove listeners on re-register/cleanup. */
+let _verificationHandler: ((r: VerificationRequest) => void) | null = null;
+let _verificationClient:
+  | Pick<MatrixClient, "on" | "off">
+  | null = null;
 
 /**
  * Subscribe to crypto verification events and push incoming requests into the store.
@@ -60,34 +64,25 @@ export function subscribeVerificationEvents(client: MatrixClient): () => void {
   const crypto = client.getCrypto();
   if (!crypto) return () => {};
 
-  // Remove previous listener if any (e.g. same client re-registered)
-  if (_verificationHandler) {
-    (client as { off(event: string, fn: (r: unknown) => void): void }).off(
-      VERIFICATION_REQUEST_RECEIVED,
-      _verificationHandler
-    );
+  // Remove previous listeners if any (e.g. client recreated on relogin)
+  if (_verificationHandler && _verificationClient) {
+    _verificationClient.off(VERIFICATION_REQUEST_RECEIVED, _verificationHandler);
   }
 
-  const handleVerificationRequestReceived = (
-    request: import("matrix-js-sdk/lib/crypto-api/verification").VerificationRequest
-  ) => {
+  const handleVerificationRequestReceived = (request: VerificationRequest) => {
     useVerificationStore.getState().addIncomingRequest(request);
   };
 
-  _verificationHandler = handleVerificationRequestReceived as (r: unknown) => void;
+  _verificationHandler = handleVerificationRequestReceived;
+  _verificationClient = client;
 
-  (client as { on(event: string, fn: (r: unknown) => void): void }).on(
-    VERIFICATION_REQUEST_RECEIVED,
-    _verificationHandler
-  );
+  // Verification request events are emitted on MatrixClient.
+  client.on(VERIFICATION_REQUEST_RECEIVED, _verificationHandler);
 
   return () => {
-    if (_verificationHandler) {
-      (client as { off(event: string, fn: (r: unknown) => void): void }).off(
-        VERIFICATION_REQUEST_RECEIVED,
-        _verificationHandler
-      );
-      _verificationHandler = null;
-    }
+    if (!_verificationHandler) return;
+    client.off(VERIFICATION_REQUEST_RECEIVED, _verificationHandler);
+    _verificationHandler = null;
+    _verificationClient = null;
   };
 }

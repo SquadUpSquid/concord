@@ -1,5 +1,6 @@
 import { useRoomStore } from "@/stores/roomStore";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { useChannelPrefsStore } from "@/stores/channelPrefsStore";
 
 let permissionGranted = false;
 
@@ -27,6 +28,9 @@ export function sendMessageNotification(
   if (!settings.enableNotifications) return;
   if (settings.notifyOnMentionsOnly && !isMention) return;
 
+  // Skip notifications for muted channels
+  if (useChannelPrefsStore.getState().isMuted(roomId)) return;
+
   if (!permissionGranted && Notification.permission !== "granted") return;
 
   if (document.hasFocus()) {
@@ -53,9 +57,12 @@ export function sendMessageNotification(
 
 export function updateTitleWithUnread(): void {
   const rooms = useRoomStore.getState().rooms;
+  const channelPrefs = useChannelPrefsStore.getState();
   let total = 0;
   for (const room of rooms.values()) {
-    if (room.membership === "join") total += room.unreadCount;
+    if (room.membership === "join" && !channelPrefs.isMuted(room.roomId)) {
+      total += room.unreadCount;
+    }
   }
 
   document.title = total > 0 ? `(${total}) Concord` : "Concord";

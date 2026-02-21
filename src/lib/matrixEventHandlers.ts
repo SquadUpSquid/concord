@@ -366,7 +366,14 @@ export function registerEventHandlers(client: MatrixClient): void {
         const myUserId = client.getUserId();
         if (message.senderId !== myUserId && message.body) {
           const roomName = room.name ?? "Unknown Room";
-          const isMention = myUserId ? message.body.includes(myUserId) : false;
+          const content = event.getContent();
+          const formattedBody = content.formatted_body ?? "";
+          const isMention = myUserId
+            ? message.body.includes(myUserId) ||
+              formattedBody.includes(`href="https://matrix.to/#/${myUserId}"`) ||
+              message.body.includes("@room") ||
+              formattedBody.includes("@room")
+            : false;
           sendMessageNotification(message.senderName, message.body, room.roomId, roomName, isMention);
         }
       }

@@ -13,7 +13,7 @@ import { getMatrixClient } from "@/lib/matrix";
 import { mxcToHttp } from "@/utils/matrixHelpers";
 import { useSettingsStore } from "@/stores/settingsStore";
 import {
-  getLivekitFocus,
+  getLivekitFocusAsync,
   fetchLivekitToken,
   joinLivekitCall,
   leaveLivekitCall,
@@ -329,8 +329,8 @@ export const useCallStore = create<CallState>()((set, get) => ({
         });
       }
 
-      // --- Check if the room uses LiveKit ---
-      const lkFocus = getLivekitFocus(client, roomId);
+      // --- Check if the room uses LiveKit (async to discover via well-known) ---
+      const lkFocus = await getLivekitFocusAsync(client, roomId);
 
       if (lkFocus) {
         // LiveKit path

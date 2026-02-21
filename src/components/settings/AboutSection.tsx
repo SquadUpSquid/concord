@@ -48,7 +48,9 @@ export function AboutSection() {
       }
     } catch (err) {
       console.error("Update check failed:", err);
-      setError("Failed to check for updates.");
+      setError(
+        err instanceof Error ? err.message : `Failed to check for updates: ${String(err)}`,
+      );
     } finally {
       setChecking(false);
     }
@@ -64,7 +66,9 @@ export function AboutSection() {
       setStatus("Update installed. Concord will restart now.");
     } catch (err) {
       console.error("Update install failed:", err);
-      setError("Update install failed.");
+      setError(
+        err instanceof Error ? err.message : `Update install failed: ${String(err)}`,
+      );
     } finally {
       setInstalling(false);
     }

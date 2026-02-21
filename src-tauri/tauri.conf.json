@@ -53,7 +53,7 @@
       "endpoints": [
         "https://github.com/SquadUpSquid/concord/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVDOUUwQzEzNzJDQUQzMTMKUldRVDA4cHlFd3llWERESFRhd2JxQ0Z3cHVBRzl1SFBiUXBLaEc3ejA5Qzl6cWFvN0Qxd0h2MGsK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdBNTQ2ODU5OEZGQTYyQTUKUldTbFl2cVBXV2hVZWs3cWh4b0IycGZMdzNCeVlZcitjVDZpNGd0NVBLY3JZT1NjVzYzRGZNMlMK",
       "dialog": true
     }
   }

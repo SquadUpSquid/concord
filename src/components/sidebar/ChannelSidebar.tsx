@@ -45,6 +45,7 @@ export function ChannelSidebar() {
     () => buildSectionOrder(storedSectionOrder, categories),
     [storedSectionOrder, categories]
   );
+  const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
   const [favoritesCollapsed, setFavoritesCollapsed] = useState(false);
 
@@ -152,6 +153,28 @@ export function ChannelSidebar() {
   }
 
   const isDefaultSection = (id: string) => id === "__text" || id === "__voice";
+
+  const sectionChannelsById = useMemo(() => {
+    const map = new Map<string, RoomSummary[]>();
+    for (const sectionId of sectionOrder) {
+      if (sectionId === "__text") {
+        map.set(sectionId, defaultTextChannels);
+        continue;
+      }
+      if (sectionId === "__voice") {
+        map.set(sectionId, defaultVoiceChannels);
+        continue;
+      }
+      const cat = categoryById.get(sectionId);
+      map.set(sectionId, cat ? getCategoryChannels(cat) : []);
+    }
+    return map;
+  }, [sectionOrder, defaultTextChannels, defaultVoiceChannels, categoryById, getCategoryChannels]);
+
+  const visibleSectionOrder = useMemo(() => {
+    if (canManage) return sectionOrder;
+    return sectionOrder.filter((sectionId) => (sectionChannelsById.get(sectionId)?.length ?? 0) > 0);
+  }, [canManage, sectionOrder, sectionChannelsById]);
 
   function handleDrop(e: React.DragEvent, targetCatId: string) {
     // Section drags: let the event bubble up to the section-level handler
@@ -416,15 +439,13 @@ export function ChannelSidebar() {
             )}
 
             {/* All sections in unified order */}
-            {sectionOrder.map((sectionId, secIdx) => {
+            {visibleSectionOrder.map((sectionId, secIdx) => {
               const isDefault = isDefaultSection(sectionId);
-              const cat = isDefault ? null : categories.find((c) => c.id === sectionId);
+              const cat = isDefault ? null : categoryById.get(sectionId);
               if (!isDefault && !cat) return null;
 
               const sectionLabel = sectionId === "__text" ? "Text Channels" : sectionId === "__voice" ? "Voice Channels" : cat!.name;
-              const sectionChannels = isDefault
-                ? (sectionId === "__text" ? defaultTextChannels : defaultVoiceChannels)
-                : getCategoryChannels(cat!);
+              const sectionChannels = sectionChannelsById.get(sectionId) ?? [];
               const isCollapsed = collapsedSections[sectionId] ?? false;
               const isRenaming = !isDefault && renamingCatId === sectionId;
               const emptyLabel = sectionId === "__text" ? "No text channels" : sectionId === "__voice" ? "No voice channels" : "Drag channels here";

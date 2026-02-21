@@ -46,17 +46,14 @@ jobs:
             exit 1
           fi
 
-          KEY_FILE="$RUNNER_TEMP/tauri-updater.key"
-          printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" > "$KEY_FILE"
-
-          # Fast-fail check: if password doesn't match this key, signing errors out immediately.
+          # Fast-fail check: verify the key and password are usable.
+          echo "test" > "$RUNNER_TEMP/preflight-test.txt"
           npx tauri signer sign \
-            --private-key "$KEY_FILE" \
+            --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
             --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" \
-            --file package.json \
-            --output "$RUNNER_TEMP/tauri-preflight.sig" >/dev/null
+            "$RUNNER_TEMP/preflight-test.txt" >/dev/null
 
-          rm -f "$KEY_FILE" "$RUNNER_TEMP/tauri-preflight.sig"
+          rm -f "$RUNNER_TEMP/preflight-test.txt" "$RUNNER_TEMP/preflight-test.txt.sig"
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-latest'

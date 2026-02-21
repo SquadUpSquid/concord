@@ -1,16 +1,9 @@
 import { create } from "zustand";
 import {
   ClientEvent,
-  GroupCall,
-  GroupCallEvent,
-  GroupCallIntent,
-  GroupCallState,
-  GroupCallType,
   SyncState,
 } from "matrix-js-sdk";
-import { CallFeed, CallFeedEvent } from "matrix-js-sdk/lib/webrtc/callFeed";
 import { getMatrixClient } from "@/lib/matrix";
-import { mxcToHttp } from "@/utils/matrixHelpers";
 import { useSettingsStore } from "@/stores/settingsStore";
 import {
   getLivekitFocusAsync,
@@ -69,178 +62,8 @@ interface CallState {
   _reset: () => void;
 }
 
-// --- Module-level refs for live SDK objects (not in Zustand) ---
-
-let activeGroupCall: GroupCall | null = null;
-const feedStreamMap = new Map<string, MediaStream>();
-const feedListenerCleanups: (() => void)[] = [];
-const screenshareFeedCleanups: (() => void)[] = [];
-
-export function getActiveGroupCall(): GroupCall | null {
-  return activeGroupCall;
-}
-
 export function getFeedStream(feedId: string): MediaStream | null {
-  return feedStreamMap.get(feedId) ?? getLkFeedStream(feedId) ?? null;
-}
-
-// --- Event listener helpers ---
-
-function cleanupFeedListeners(): void {
-  for (const cleanup of feedListenerCleanups) {
-    cleanup();
-  }
-  feedListenerCleanups.length = 0;
-}
-
-function attachFeedListeners(
-  feeds: CallFeed[],
-  set: (partial: Partial<CallState>) => void,
-  get: () => CallState,
-): void {
-  cleanupFeedListeners();
-
-  for (const feed of feeds) {
-    const feedId = `${feed.userId}:${feed.deviceId ?? "default"}`;
-
-    const onSpeaking = (speaking: boolean) => {
-      const participants = new Map(get().participants);
-      const p = participants.get(feedId);
-      if (p) {
-        participants.set(feedId, { ...p, isSpeaking: speaking });
-        set({ participants });
-      }
-    };
-
-    const onMuteStateChanged = (audioMuted: boolean, videoMuted: boolean) => {
-      const participants = new Map(get().participants);
-      const p = participants.get(feedId);
-      if (p) {
-        participants.set(feedId, { ...p, isAudioMuted: audioMuted, isVideoMuted: videoMuted });
-        set({ participants });
-      }
-    };
-
-    const onNewStream = (newStream: MediaStream) => {
-      feedStreamMap.set(feedId, newStream);
-      // Force re-render by creating a new Map reference
-      set({ participants: new Map(get().participants) });
-    };
-
-    feed.on(CallFeedEvent.Speaking, onSpeaking);
-    feed.on(CallFeedEvent.MuteStateChanged, onMuteStateChanged);
-    feed.on(CallFeedEvent.NewStream, onNewStream);
-
-    // Enable volume monitoring for speaking detection
-    feed.measureVolumeActivity(true);
-
-    feedListenerCleanups.push(() => {
-      feed.off(CallFeedEvent.Speaking, onSpeaking);
-      feed.off(CallFeedEvent.MuteStateChanged, onMuteStateChanged);
-      feed.off(CallFeedEvent.NewStream, onNewStream);
-    });
-  }
-}
-
-function attachGroupCallListeners(
-  groupCall: GroupCall,
-  set: (partial: Partial<CallState>) => void,
-  get: () => CallState,
-): void {
-  const client = getMatrixClient();
-  const homeserverUrl = client?.getHomeserverUrl() ?? "";
-
-  groupCall.on(GroupCallEvent.UserMediaFeedsChanged, (feeds: CallFeed[]) => {
-    const participants = new Map<string, CallParticipant>();
-    feedStreamMap.clear();
-
-    for (const feed of feeds) {
-      const feedId = `${feed.userId}:${feed.deviceId ?? "default"}`;
-      feedStreamMap.set(feedId, feed.stream);
-
-      const member = feed.getMember();
-      participants.set(feedId, {
-        userId: feed.userId,
-        displayName: member?.name ?? feed.userId,
-        avatarUrl: member ? mxcToHttp(member.getMxcAvatarUrl(), homeserverUrl) : null,
-        mxcAvatarUrl: member?.getMxcAvatarUrl() ?? null,
-        isSpeaking: feed.isSpeaking(),
-        isAudioMuted: feed.isAudioMuted(),
-        isVideoMuted: feed.isVideoMuted(),
-        feedId,
-      });
-    }
-
-    attachFeedListeners(feeds, set, get);
-    set({ participants });
-  });
-
-  groupCall.on(GroupCallEvent.ActiveSpeakerChanged, (activeSpeaker?: CallFeed) => {
-    set({ activeSpeakerId: activeSpeaker?.userId ?? null });
-  });
-
-  groupCall.on(GroupCallEvent.LocalMuteStateChanged, (audioMuted: boolean, videoMuted: boolean) => {
-    set({ isMicMuted: audioMuted, isVideoMuted: videoMuted });
-  });
-
-  groupCall.on(GroupCallEvent.GroupCallStateChanged, (newState: GroupCallState) => {
-    if (newState === GroupCallState.Ended) {
-      get().leaveCall();
-    }
-  });
-
-  groupCall.on(GroupCallEvent.LocalScreenshareStateChanged, (isScreensharing: boolean) => {
-    set({ isScreenSharing: isScreensharing });
-  });
-
-  groupCall.on(GroupCallEvent.ScreenshareFeedsChanged, (feeds: CallFeed[]) => {
-    for (const cleanup of screenshareFeedCleanups) cleanup();
-    screenshareFeedCleanups.length = 0;
-    for (const key of feedStreamMap.keys()) {
-      if (key.startsWith("screenshare:")) feedStreamMap.delete(key);
-    }
-    const list: { feedId: string; userId: string; displayName: string }[] = [];
-    for (const feed of feeds) {
-      const feedId = `screenshare:${feed.userId}:${feed.deviceId ?? "default"}`;
-      feedStreamMap.set(feedId, feed.stream);
-      const member = feed.getMember();
-      list.push({
-        feedId,
-        userId: feed.userId,
-        displayName: member?.name ?? feed.userId,
-      });
-      const onNewStream = (newStream: MediaStream) => {
-        feedStreamMap.set(feedId, newStream);
-        set({ screenshareFeeds: [...get().screenshareFeeds] });
-      };
-      feed.on(CallFeedEvent.NewStream, onNewStream);
-      screenshareFeedCleanups.push(() => feed.off(CallFeedEvent.NewStream, onNewStream));
-    }
-    set({ screenshareFeeds: list });
-  });
-
-  groupCall.on(GroupCallEvent.Error, (error) => {
-    console.error("Group call error:", error);
-    const roomId = get().activeCallRoomId;
-    get().leaveCall();
-    set({
-      activeCallRoomId: roomId,
-      error: toUserFriendlyError(error),
-    });
-  });
-}
-
-function detachGroupCallListeners(groupCall: GroupCall): void {
-  groupCall.removeAllListeners(GroupCallEvent.UserMediaFeedsChanged);
-  groupCall.removeAllListeners(GroupCallEvent.ActiveSpeakerChanged);
-  groupCall.removeAllListeners(GroupCallEvent.LocalMuteStateChanged);
-  groupCall.removeAllListeners(GroupCallEvent.GroupCallStateChanged);
-  groupCall.removeAllListeners(GroupCallEvent.LocalScreenshareStateChanged);
-  groupCall.removeAllListeners(GroupCallEvent.ScreenshareFeedsChanged);
-  groupCall.removeAllListeners(GroupCallEvent.Error);
-  for (const cleanup of screenshareFeedCleanups) cleanup();
-  screenshareFeedCleanups.length = 0;
-  cleanupFeedListeners();
+  return getLkFeedStream(feedId) ?? null;
 }
 
 // --- Store ---
@@ -329,120 +152,33 @@ export const useCallStore = create<CallState>()((set, get) => ({
         });
       }
 
-      // --- Check if the room uses LiveKit (async to discover via well-known) ---
+      // --- Discover LiveKit server ---
       const lkFocus = await getLivekitFocusAsync(client, roomId);
 
-      if (lkFocus) {
-        // LiveKit path
-        console.log("[livekit] Room uses LiveKit, fetching token from", lkFocus.livekitServiceUrl);
-        const { url, jwt } = await fetchLivekitToken(client, lkFocus.livekitServiceUrl, roomId);
-        console.log("[livekit] Token received, connecting to", url);
-
-        // Apply preferred devices after connection via LiveKit APIs
-        await joinLivekitCall(client, roomId, url, jwt, lkFocus);
-
-        const { audioInputDeviceId, videoInputDeviceId } = useSettingsStore.getState();
-        const lkRoom = getActiveLkRoom();
-        if (lkRoom) {
-          if (audioInputDeviceId) {
-            await lkRoom.switchActiveDevice("audioinput", audioInputDeviceId).catch(() => {});
-          }
-          if (videoInputDeviceId) {
-            await lkRoom.switchActiveDevice("videoinput", videoInputDeviceId).catch(() => {});
-          }
-        }
-        return;
-      }
-
-      // --- Legacy WebRTC GroupCall path ---
-      if (!client.groupCallEventHandler) {
+      if (!lkFocus) {
         throw new Error(
-          "Voice calls are not supported in this environment. WebRTC may not be available."
+          "Could not find a LiveKit server for this room. Voice calls require a homeserver with LiveKit configured."
         );
       }
-      await client.groupCallEventHandler.waitUntilRoomReadyForGroupCalls(roomId);
 
-      let groupCall = client.getGroupCallForRoom(roomId);
+      console.log("[livekit] Room uses LiveKit, fetching token from", lkFocus.livekitServiceUrl);
+      const { url, jwt } = await fetchLivekitToken(client, lkFocus.livekitServiceUrl, roomId);
+      console.log("[livekit] Token received, connecting to", url);
 
-      if (!groupCall) {
-        const room = client.getRoom(roomId);
-        if (room) {
-          try {
-            client.groupCallEventHandler.waitUntilRoomReadyForGroupCalls(roomId);
-            await new Promise((r) => setTimeout(r, 500));
-            groupCall = client.getGroupCallForRoom(roomId);
-          } catch {
-            // Continue to create
-          }
-        }
-      }
-
-      if (!groupCall) {
-        try {
-          groupCall = await client.createGroupCall(
-            roomId,
-            GroupCallType.Video,
-            false,
-            GroupCallIntent.Room,
-          );
-        } catch (createErr) {
-          console.warn("Could not create group call, checking for existing:", createErr);
-          for (let i = 0; i < 3; i++) {
-            await new Promise((r) => setTimeout(r, 2000));
-            groupCall = client.getGroupCallForRoom(roomId);
-            if (groupCall) break;
-          }
-          if (!groupCall) {
-            throw createErr;
-          }
-        }
-      }
-
-      activeGroupCall = groupCall;
-      attachGroupCallListeners(groupCall, set, get);
+      await joinLivekitCall(client, roomId, url, jwt, lkFocus);
 
       const { audioInputDeviceId, videoInputDeviceId } = useSettingsStore.getState();
-      const mediaHandler = client.getMediaHandler?.();
-      if (mediaHandler) {
-        await (mediaHandler as { setMediaInputs(a?: string, v?: string): Promise<void> })
-          .setMediaInputs(
-            audioInputDeviceId ?? undefined,
-            videoInputDeviceId ?? undefined
-          )
-          .catch((err) => console.warn("Failed to set media devices:", err));
+      const lkRoom = getActiveLkRoom();
+      if (lkRoom) {
+        if (audioInputDeviceId) {
+          await lkRoom.switchActiveDevice("audioinput", audioInputDeviceId).catch(() => {});
+        }
+        if (videoInputDeviceId) {
+          await lkRoom.switchActiveDevice("videoinput", videoInputDeviceId).catch(() => {});
+        }
       }
-
-      await groupCall.enter();
-      await groupCall.setLocalVideoMuted(true);
-
-      for (const key of feedStreamMap.keys()) {
-        if (key.startsWith("screenshare:")) feedStreamMap.delete(key);
-      }
-      const list: { feedId: string; userId: string; displayName: string }[] = [];
-      for (const feed of groupCall.screenshareFeeds) {
-        const feedId = `screenshare:${feed.userId}:${feed.deviceId ?? "default"}`;
-        feedStreamMap.set(feedId, feed.stream);
-        const member = feed.getMember();
-        list.push({
-          feedId,
-          userId: feed.userId,
-          displayName: member?.name ?? feed.userId,
-        });
-      }
-      set({
-        connectionState: "connected",
-        isMicMuted: false,
-        isVideoMuted: true,
-        isScreenSharing: groupCall.isScreensharing(),
-        screenshareFeeds: list,
-        error: null,
-      });
     } catch (err) {
       console.error("Failed to join call:", err);
-      if (activeGroupCall) {
-        detachGroupCallListeners(activeGroupCall);
-        activeGroupCall = null;
-      }
       set({
         ...initialState,
         activeCallRoomId: roomId,
@@ -459,98 +195,60 @@ export const useCallStore = create<CallState>()((set, get) => ({
           console.warn("Error during LiveKit leave:", err),
         );
       }
-    } else if (activeGroupCall) {
-      try {
-        activeGroupCall.leave();
-      } catch {
-        // Ignore errors during leave
-      }
-      detachGroupCallListeners(activeGroupCall);
-      activeGroupCall = null;
     }
-    feedStreamMap.clear();
     const roomParticipants = get().participantsByRoom;
     set({ ...initialState, participantsByRoom: roomParticipants });
   },
 
   toggleMic: async () => {
-    if (isLivekitActive()) {
-      const ok = await toggleLkMic();
-      if (ok) {
-        const lkRoom = getActiveLkRoom();
-        set({ isMicMuted: !lkRoom?.localParticipant.isMicrophoneEnabled });
-      }
-      return;
+    if (!isLivekitActive()) return;
+    const ok = await toggleLkMic();
+    if (ok) {
+      const lkRoom = getActiveLkRoom();
+      set({ isMicMuted: !lkRoom?.localParticipant.isMicrophoneEnabled });
     }
-    if (!activeGroupCall) return;
-    const newMuted = !get().isMicMuted;
-    const success = await activeGroupCall.setMicrophoneMuted(newMuted);
-    if (success) set({ isMicMuted: newMuted });
   },
 
   toggleVideo: async () => {
-    if (isLivekitActive()) {
-      const ok = await toggleLkVideo();
-      if (ok) {
-        const lkRoom = getActiveLkRoom();
-        set({ isVideoMuted: !lkRoom?.localParticipant.isCameraEnabled });
-      }
-      return;
+    if (!isLivekitActive()) return;
+    const ok = await toggleLkVideo();
+    if (ok) {
+      const lkRoom = getActiveLkRoom();
+      set({ isVideoMuted: !lkRoom?.localParticipant.isCameraEnabled });
     }
-    if (!activeGroupCall) return;
-    const newMuted = !get().isVideoMuted;
-    const success = await activeGroupCall.setLocalVideoMuted(newMuted);
-    if (success) set({ isVideoMuted: newMuted });
   },
 
   toggleDeafen: () => {
     const newDeafened = !get().isDeafened;
-    if (isLivekitActive()) {
-      if (newDeafened) {
-        set({ isDeafened: true, wasMicMutedBeforeDeafen: get().isMicMuted });
-        toggleLkMic().then(() => {
-          const lkRoom = getActiveLkRoom();
-          if (lkRoom?.localParticipant.isMicrophoneEnabled) {
-            lkRoom.localParticipant.setMicrophoneEnabled(false).catch(() => {});
-          }
-          set({ isMicMuted: true });
-        });
-      } else {
-        const restoreMuted = get().wasMicMutedBeforeDeafen;
-        set({ isDeafened: false });
-        const lkRoom = getActiveLkRoom();
-        lkRoom?.localParticipant.setMicrophoneEnabled(!restoreMuted).catch(() => {});
-        set({ isMicMuted: restoreMuted });
-      }
+    if (!isLivekitActive()) {
+      set({ isDeafened: newDeafened });
       return;
     }
-    if (newDeafened && activeGroupCall) {
+    if (newDeafened) {
       set({ isDeafened: true, wasMicMutedBeforeDeafen: get().isMicMuted });
-      activeGroupCall.setMicrophoneMuted(true);
-      set({ isMicMuted: true });
-    } else if (!newDeafened && activeGroupCall) {
+      toggleLkMic().then(() => {
+        const lkRoom = getActiveLkRoom();
+        if (lkRoom?.localParticipant.isMicrophoneEnabled) {
+          lkRoom.localParticipant.setMicrophoneEnabled(false).catch(() => {});
+        }
+        set({ isMicMuted: true });
+      });
+    } else {
       const restoreMuted = get().wasMicMutedBeforeDeafen;
       set({ isDeafened: false });
-      activeGroupCall.setMicrophoneMuted(restoreMuted);
+      const lkRoom = getActiveLkRoom();
+      lkRoom?.localParticipant.setMicrophoneEnabled(!restoreMuted).catch(() => {});
       set({ isMicMuted: restoreMuted });
-    } else {
-      set({ isDeafened: newDeafened });
     }
   },
 
   toggleScreenShare: async () => {
-    if (isLivekitActive()) {
-      const ok = await toggleLkScreenShare();
-      if (ok) {
-        const lkRoom = getActiveLkRoom();
-        set({ isScreenSharing: lkRoom?.localParticipant.isScreenShareEnabled ?? false });
-      }
-      return;
+    if (!isLivekitActive()) return;
+    const ok = await toggleLkScreenShare();
+    if (ok) {
+      const lkRoom = getActiveLkRoom();
+      set({ isScreenSharing: lkRoom?.localParticipant.isScreenShareEnabled ?? false });
     }
-    if (!activeGroupCall) return;
-    const newEnabled = !get().isScreenSharing;
-    const success = await activeGroupCall.setScreensharingEnabled(newEnabled);
-    if (success) set({ isScreenSharing: newEnabled });
   },
 
   setParticipants: (participants) => set({ participants }),

@@ -359,14 +359,30 @@ export function registerEventHandlers(client: MatrixClient): void {
           });
         }
       } else {
+        // Skip edit events that weren't caught above (e.g. encrypted edits
+        // where m.relates_to isn't visible yet, or local echo duplicates)
+        const content = event.getContent();
+        if (content["m.new_content"] || content["m.relates_to"]?.rel_type === "m.replace") return;
+
         const message = mapEventToMessage(event, client);
+
+        // Also skip if mapEventToMessage detected this as an edit via replacingEvent()
+        if (message.isEdited && message.body.startsWith("* ")) return;
+
         useMessageStore.getState().addMessage(room.roomId, message);
 
         // Send desktop notification for messages from other people
         const myUserId = client.getUserId();
         if (message.senderId !== myUserId && message.body) {
           const roomName = room.name ?? "Unknown Room";
-          const isMention = myUserId ? message.body.includes(myUserId) : false;
+          const content = event.getContent();
+          const formattedBody = content.formatted_body ?? "";
+          const isMention = myUserId
+            ? message.body.includes(myUserId) ||
+              formattedBody.includes(`href="https://matrix.to/#/${myUserId}"`) ||
+              message.body.includes("@room") ||
+              formattedBody.includes("@room")
+            : false;
           sendMessageNotification(message.senderName, message.body, room.roomId, roomName, isMention);
         }
       }

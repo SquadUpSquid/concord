@@ -303,14 +303,14 @@ export const MessageItem = memo(function MessageItem({ message, showHeader }: Me
         </button>
         {showQuickPicker && !showFullPicker && (
           <div className="absolute bottom-full right-0 z-10 pb-1">
-            <div className="flex items-center gap-1 rounded-lg bg-bg-floating p-1.5 shadow-lg">
+            <div className="flex items-center gap-1.5 rounded-lg bg-bg-floating p-2 shadow-lg">
               {QUICK_EMOJIS.map((emoji) => (
                 <button
                   key={emoji}
                   onClick={() => sendReaction(emoji)}
-                  className="rounded p-1 hover:bg-bg-hover"
+                  className="flex-shrink-0 rounded p-1.5 hover:bg-bg-hover"
                 >
-                  <Emoji emoji={emoji} size={20} />
+                  <Emoji emoji={emoji} size={22} />
                 </button>
               ))}
               <div className="mx-0.5 h-6 w-px bg-bg-active" />

@@ -38,8 +38,8 @@ export const Emoji = memo(function Emoji({ emoji, size = 20, className = "" }: E
       src={url}
       alt={emoji}
       draggable={false}
-      className={`inline-block align-text-bottom ${className}`}
-      style={{ width: size, height: size }}
+      className={`inline-block flex-shrink-0 align-text-bottom ${className}`}
+      style={{ width: size, height: size, minWidth: size, minHeight: size }}
     />
   );
 });

@@ -116,6 +116,16 @@ export function MessageInput({ roomId }: MessageInputProps) {
 
     try {
       if (editingMessage) {
+        // Optimistically update the message locally so the edit appears immediately
+        const editEventId = editingMessage.eventId;
+        const editRoomId = editingMessage.roomId;
+        useMessageStore.getState().updateMessage(editRoomId, editEventId, {
+          body,
+          formattedBody: null,
+          isEdited: true,
+        });
+        setEditingMessage(null);
+
         // Send edit via m.replace relation
         await client.sendEvent(roomId, "m.room.message" as any, {
           msgtype: "m.text",
@@ -126,10 +136,9 @@ export function MessageInput({ roomId }: MessageInputProps) {
           },
           "m.relates_to": {
             rel_type: "m.replace",
-            event_id: editingMessage.eventId,
+            event_id: editEventId,
           },
         });
-        setEditingMessage(null);
       } else if (replyingTo) {
         const replyBody = `> <${replyingTo.senderId}> ${replyingTo.body}\n\n${body}`;
         const formattedReply = `<mx-reply><blockquote><a href="https://matrix.to/#/${replyingTo.roomId}/${replyingTo.eventId}">In reply to</a> <a href="https://matrix.to/#/${replyingTo.senderId}">${replyingTo.senderName}</a><br/>${replyingTo.body}</blockquote></mx-reply>${body}`;
@@ -152,6 +161,15 @@ export function MessageInput({ roomId }: MessageInputProps) {
     } catch (err) {
       console.error("Failed to send message:", err);
       setMessage(body);
+      // If an edit failed, revert the optimistic update
+      if (editingMessage) {
+        useMessageStore.getState().updateMessage(editingMessage.roomId, editingMessage.eventId, {
+          body: editingMessage.body,
+          formattedBody: editingMessage.formattedBody,
+          isEdited: editingMessage.isEdited,
+        });
+        setEditingMessage(editingMessage);
+      }
     }
   };
 
@@ -503,10 +521,7 @@ export function MessageInput({ roomId }: MessageInputProps) {
             className="ml-2 rounded p-1 text-text-muted hover:text-text-primary"
             title="Emoji"
           >
-            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" />
-            </svg>
+            <Emoji emoji={"\u{1F642}"} size={20} />
           </button>
           {showEmojiPicker && (
             <div className="absolute bottom-full right-0 z-10 mb-2">

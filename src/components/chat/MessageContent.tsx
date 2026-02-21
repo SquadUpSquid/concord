@@ -268,7 +268,7 @@ export function MessageContent({ body, formattedBody: _formattedBody, msgtype, u
   const isMentioned = myUserId ? body.includes(myUserId) : false;
 
   return (
-    <div className={`message-content text-sm text-text-secondary ${isMentioned ? "border-l-2 border-accent pl-2" : ""}`}>
+    <div className={`message-content select-text text-sm text-text-secondary ${isMentioned ? "border-l-2 border-accent pl-2" : ""}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}

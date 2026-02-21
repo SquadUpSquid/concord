@@ -3,6 +3,18 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { mxcToHttp } from "@/utils/matrixHelpers";
 
 let matrixClient: sdk.MatrixClient | null = null;
+let cachedSecretStorageKey: Uint8Array | null = null;
+let cachedSecretStorageKeyId: string | null = null;
+
+export function cacheSecretStorageRecoveryKey(key: Uint8Array, keyId?: string | null): void {
+  cachedSecretStorageKey = new Uint8Array(key);
+  cachedSecretStorageKeyId = keyId ?? null;
+}
+
+export function clearSecretStorageRecoveryKey(): void {
+  cachedSecretStorageKey = null;
+  cachedSecretStorageKeyId = null;
+}
 
 /** Registered by App.tsx so React re-renders when the client changes. */
 let _onClientChanged: (() => void) | null = null;
@@ -62,6 +74,21 @@ async function createClient(
     fallbackICEServerAllowed: true,
     iceCandidatePoolSize: 20,
     useE2eForGroupCall: false,
+    cryptoCallbacks: {
+      getSecretStorageKey: async ({ keys }) => {
+        if (!cachedSecretStorageKey) return null;
+        const keyIds = Object.keys(keys);
+        if (keyIds.length === 0) return null;
+        const chosenKeyId =
+          cachedSecretStorageKeyId && keys[cachedSecretStorageKeyId]
+            ? cachedSecretStorageKeyId
+            : keyIds[0];
+        return [chosenKeyId, new Uint8Array(cachedSecretStorageKey)];
+      },
+      cacheSecretStorageKey: (keyId, _keyInfo, key) => {
+        cacheSecretStorageRecoveryKey(key, keyId);
+      },
+    },
   });
 
   await store.startup();
@@ -123,6 +150,7 @@ export async function destroyMatrixClient(): Promise<void> {
     matrixClient = null;
     emitClientChanged();
   }
+  clearSecretStorageRecoveryKey();
 }
 
 export async function hydrateOwnProfile(
@@ -152,6 +180,7 @@ export async function loginToMatrix(
   username: string,
   password: string
 ): Promise<{ accessToken: string; userId: string; deviceId: string }> {
+  clearSecretStorageRecoveryKey();
   // New login = new device, clear old databases
   await clearAllDatabases();
 
@@ -208,6 +237,7 @@ export async function registerToMatrix(
   password: string,
   registrationToken?: string
 ): Promise<{ accessToken: string; userId: string; deviceId: string }> {
+  clearSecretStorageRecoveryKey();
   await clearAllDatabases();
 
   const tempClient = sdk.createClient({

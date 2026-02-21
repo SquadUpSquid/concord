@@ -118,13 +118,14 @@ export function UserPanel() {
                 )}
               </CallControlButton>
 
-              <CallControlButton
-                onClick={toggleScreenShare}
-                active={isScreenSharing}
-                title={isScreenSharing ? "Stop sharing" : "Share screen"}
-              >
-                <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z" />
+            <CallControlButton
+              onClick={toggleScreenShare}
+              active={isScreenSharing}
+              activeGreen
+              title={isScreenSharing ? "Stop sharing" : "Share screen"}
+            >
+              <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z" />
                 </svg>
               </CallControlButton>
 
@@ -187,12 +188,14 @@ export function UserPanel() {
 function CallControlButton({
   onClick,
   active,
+  activeGreen,
   danger,
   title,
   children,
 }: {
   onClick: () => void | Promise<void>;
   active?: boolean;
+  activeGreen?: boolean;
   danger?: boolean;
   title: string;
   children: ReactNode;
@@ -204,9 +207,11 @@ function CallControlButton({
       className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors ${
         danger
           ? "bg-bg-active text-red hover:bg-bg-hover"
-          : active
-            ? "bg-bg-active text-text-primary hover:bg-bg-hover"
-            : "bg-bg-active text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+          : active && activeGreen
+            ? "bg-green/20 text-green hover:bg-green/25"
+            : active
+              ? "bg-bg-active text-text-primary hover:bg-bg-hover"
+              : "bg-bg-active text-text-secondary hover:bg-bg-hover hover:text-text-primary"
       }`}
     >
       {children}

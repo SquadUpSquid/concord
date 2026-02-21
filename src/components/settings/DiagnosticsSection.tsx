@@ -17,17 +17,13 @@ export function DiagnosticsSection() {
   const [updateDiag, setUpdateDiag] = useState<string>("");
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
-  const auth = useAuthStore((s) => ({
-    userId: s.userId,
-    homeserverUrl: s.homeserverUrl,
-    isLoggedIn: s.isLoggedIn,
-  }));
-  const roomState = useRoomStore((s) => ({
-    syncState: s.syncState,
-    selectedRoomId: s.selectedRoomId,
-    selectedSpaceId: s.selectedSpaceId,
-    roomCount: s.rooms.size,
-  }));
+  const userId = useAuthStore((s) => s.userId);
+  const homeserverUrl = useAuthStore((s) => s.homeserverUrl);
+  const isLoggedIn = useAuthStore((s) => s.isLoggedIn);
+  const syncState = useRoomStore((s) => s.syncState);
+  const selectedRoomId = useRoomStore((s) => s.selectedRoomId);
+  const selectedSpaceId = useRoomStore((s) => s.selectedSpaceId);
+  const roomCount = useRoomStore((s) => s.rooms.size);
 
   useEffect(() => {
     getVersion().then(setAppVersion).catch(() => setAppVersion("Unknown"));
@@ -38,12 +34,22 @@ export function DiagnosticsSection() {
       timestamp: new Date().toISOString(),
       appVersion,
       platform: navigator.userAgent,
-      auth,
-      roomState,
+      auth: { userId, homeserverUrl, isLoggedIn },
+      roomState: { syncState, selectedRoomId, selectedSpaceId, roomCount },
       matrixClientReady: Boolean(getMatrixClient()),
       updaterDiagnostics: updateDiag || null,
     }),
-    [appVersion, auth, roomState, updateDiag]
+    [
+      appVersion,
+      userId,
+      homeserverUrl,
+      isLoggedIn,
+      syncState,
+      selectedRoomId,
+      selectedSpaceId,
+      roomCount,
+      updateDiag,
+    ]
   );
 
   const runUpdateDiagnostics = async () => {
@@ -82,10 +88,10 @@ export function DiagnosticsSection() {
       <div className="rounded-lg bg-bg-secondary p-5">
         <div className="space-y-1 text-sm text-text-secondary">
           <p><span className="text-text-muted">App Version:</span> {appVersion}</p>
-          <p><span className="text-text-muted">Sync State:</span> {roomState.syncState}</p>
-          <p><span className="text-text-muted">Rooms Loaded:</span> {roomState.roomCount}</p>
-          <p><span className="text-text-muted">Selected Space:</span> {roomState.selectedSpaceId ?? "none"}</p>
-          <p><span className="text-text-muted">Selected Room:</span> {roomState.selectedRoomId ?? "none"}</p>
+          <p><span className="text-text-muted">Sync State:</span> {syncState}</p>
+          <p><span className="text-text-muted">Rooms Loaded:</span> {roomCount}</p>
+          <p><span className="text-text-muted">Selected Space:</span> {selectedSpaceId ?? "none"}</p>
+          <p><span className="text-text-muted">Selected Room:</span> {selectedRoomId ?? "none"}</p>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
@@ -109,4 +115,3 @@ export function DiagnosticsSection() {
     </div>
   );
 }
-

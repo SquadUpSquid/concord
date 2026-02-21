@@ -37,6 +37,11 @@ body {
   @apply bg-bg-primary text-text-primary font-sans antialiased;
   margin: 0;
   overflow: hidden;
+  user-select: text;
+}
+
+button,
+svg {
   user-select: none;
 }
 

@@ -308,7 +308,7 @@ export const MessageItem = memo(function MessageItem({ message, showHeader }: Me
                 <button
                   key={emoji}
                   onClick={() => sendReaction(emoji)}
-                  className="rounded p-1.5 hover:bg-bg-hover"
+                  className="flex-shrink-0 rounded p-1.5 hover:bg-bg-hover"
                 >
                   <Emoji emoji={emoji} size={22} />
                 </button>

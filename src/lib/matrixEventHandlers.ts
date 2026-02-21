@@ -359,6 +359,10 @@ export function registerEventHandlers(client: MatrixClient): void {
           });
         }
       } else {
+        // Skip edit events that weren't caught above (e.g. still-encrypted edits)
+        const relation = event.getRelation?.();
+        if (relation?.rel_type === "m.replace") return;
+
         const message = mapEventToMessage(event, client);
         useMessageStore.getState().addMessage(room.roomId, message);
 

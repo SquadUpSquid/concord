@@ -34,6 +34,30 @@ jobs:
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
+      - name: Validate updater signing key/password
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ] || [ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ]; then
+            echo "Missing TAURI_SIGNING_PRIVATE_KEY or TAURI_SIGNING_PRIVATE_KEY_PASSWORD secret."
+            exit 1
+          fi
+
+          KEY_FILE="$RUNNER_TEMP/tauri-updater.key"
+          printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" > "$KEY_FILE"
+
+          # Fast-fail check: if password doesn't match this key, signing errors out immediately.
+          npx tauri signer sign \
+            --private-key "$KEY_FILE" \
+            --password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" \
+            --file package.json \
+            --output "$RUNNER_TEMP/tauri-preflight.sig" >/dev/null
+
+          rm -f "$KEY_FILE" "$RUNNER_TEMP/tauri-preflight.sig"
+
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-latest'
         run: |

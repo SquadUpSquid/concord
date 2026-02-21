@@ -1,6 +1,6 @@
 [package]
 name = "concord"
-version = "0.2.0"
+version = "0.2.1"
 description = "A Discord-like Matrix client"
 authors = ["William Harrell"]
 edition = "2021"

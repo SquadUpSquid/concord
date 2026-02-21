@@ -19,7 +19,7 @@ export function TitleBar() {
 
   return (
     <div
-      className="flex h-8 w-full items-center bg-bg-tertiary"
+      className="flex h-8 w-full select-none items-center bg-bg-tertiary"
       onMouseDown={handleDragStart}
     >
       <div

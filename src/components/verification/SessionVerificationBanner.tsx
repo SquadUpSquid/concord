@@ -9,14 +9,19 @@ import { useVerificationStore } from "@/stores/verificationStore";
 export function SessionVerificationBanner() {
   const deviceVerified = useVerificationStore((s) => s.deviceVerified);
   const activeRequest = useVerificationStore((s) => s.activeRequest);
+  const incomingRequests = useVerificationStore((s) => s.incomingRequests);
+  const setActiveRequest = useVerificationStore((s) => s.setActiveRequest);
 
-  const showBanner =
-    deviceVerified === false &&
-    activeRequest === null;
+  const showBanner = deviceVerified === false;
+  const pendingRequest = activeRequest ?? incomingRequests[0] ?? null;
 
   const handleUseAnotherDevice = () => {
     const client = getMatrixClient();
     if (!client) return;
+    if (pendingRequest) {
+      setActiveRequest(pendingRequest);
+      return;
+    }
     requestOwnUserVerification(client);
   };
 
@@ -32,7 +37,7 @@ export function SessionVerificationBanner() {
         onClick={handleUseAnotherDevice}
         className="shrink-0 rounded bg-accent px-3 py-1.5 font-medium text-white hover:bg-accent/90"
       >
-        Use another device
+        {pendingRequest ? "Continue verification" : "Use another device"}
       </button>
     </div>
   );

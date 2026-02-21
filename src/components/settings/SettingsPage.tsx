@@ -7,8 +7,10 @@ import { NotificationsSection } from "./NotificationsSection";
 import { SessionsSection } from "./SessionsSection";
 import { VoiceVideoSection } from "./VoiceVideoSection";
 import { AboutSection } from "./AboutSection";
+import { DiagnosticsSection } from "./DiagnosticsSection";
 import { destroyMatrixClient } from "@/lib/matrix";
 import { useAuthStore } from "@/stores/authStore";
+import { useRoomStore } from "@/stores/roomStore";
 
 type SettingsTab =
   | "profile"
@@ -17,7 +19,8 @@ type SettingsTab =
   | "notifications"
   | "voicevideo"
   | "sessions"
-  | "about";
+  | "about"
+  | "diagnostics";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "profile", label: "My Account", icon: "user" },
@@ -27,6 +30,7 @@ const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "voicevideo", label: "Voice & Video", icon: "mic" },
   { id: "sessions", label: "Sessions", icon: "devices" },
   { id: "about", label: "About", icon: "info" },
+  { id: "diagnostics", label: "Diagnostics", icon: "activity" },
 ];
 
 function TabIcon({ icon }: { icon: string }) {
@@ -81,6 +85,12 @@ function TabIcon({ icon }: { icon: string }) {
           <path d="M12 16v-4M12 8h.01" />
         </svg>
       );
+    case "activity":
+      return (
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M22 12h-4l-3 8-4-16-3 8H2" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -89,6 +99,7 @@ function TabIcon({ icon }: { icon: string }) {
 export function SettingsPage() {
   const closeModal = useUiStore((s) => s.closeModal);
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+  const resetRoomState = useRoomStore((s) => s.resetState);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -100,6 +111,7 @@ export function SettingsPage() {
 
   const handleLogout = async () => {
     await destroyMatrixClient();
+    resetRoomState();
     useAuthStore.getState().logout();
     closeModal();
   };
@@ -166,6 +178,7 @@ export function SettingsPage() {
             {activeTab === "voicevideo" && <VoiceVideoSection />}
             {activeTab === "sessions" && <SessionsSection />}
             {activeTab === "about" && <AboutSection />}
+            {activeTab === "diagnostics" && <DiagnosticsSection />}
           </div>
         </div>
       </div>

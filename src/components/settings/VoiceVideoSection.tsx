@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { getMatrixClient } from "@/lib/matrix";
 import { ThemedSelect } from "@/components/common/ThemedSelect";
@@ -35,6 +35,11 @@ export function VoiceVideoSection() {
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [micLevel, setMicLevel] = useState(0);
+  const [testingMic, setTestingMic] = useState(false);
+  const testingMicRef = useRef(false);
+  const [cameraPreviewOn, setCameraPreviewOn] = useState(false);
+  const [cameraPreviewUrl, setCameraPreviewUrl] = useState<string | null>(null);
 
   const loadDevices = useCallback(async () => {
     setLoading(true);
@@ -138,6 +143,108 @@ export function VoiceVideoSection() {
     }
   };
 
+  const stopCameraPreview = useCallback(() => {
+    if (cameraPreviewUrl) {
+      URL.revokeObjectURL(cameraPreviewUrl);
+      setCameraPreviewUrl(null);
+    }
+    const previewEl = document.getElementById("camera-preview-video") as HTMLVideoElement | null;
+    const stream = previewEl?.srcObject as MediaStream | null;
+    stream?.getTracks().forEach((t) => t.stop());
+    if (previewEl) previewEl.srcObject = null;
+    setCameraPreviewOn(false);
+  }, [cameraPreviewUrl]);
+
+  const startCameraPreview = useCallback(async () => {
+    stopCameraPreview();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: videoInputDeviceId ? { deviceId: { exact: videoInputDeviceId } } : true,
+        audio: false,
+      });
+      const previewEl = document.getElementById("camera-preview-video") as HTMLVideoElement | null;
+      if (previewEl) {
+        previewEl.srcObject = stream;
+        await previewEl.play().catch(() => {});
+      }
+      setCameraPreviewOn(true);
+    } catch (err) {
+      console.error("Camera preview failed:", err);
+      setError("Unable to start camera preview. Check camera permission.");
+    }
+  }, [videoInputDeviceId, stopCameraPreview]);
+
+  const testSpeakerTone = () => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = 880;
+      gain.gain.value = 0.05;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      setTimeout(() => {
+        osc.stop();
+        ctx.close().catch(() => {});
+      }, 350);
+    } catch (err) {
+      console.error("Speaker test failed:", err);
+    }
+  };
+
+  const testMicrophone = async () => {
+    if (testingMic) {
+      testingMicRef.current = false;
+      setTestingMic(false);
+      return;
+    }
+    testingMicRef.current = true;
+    setTestingMic(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: audioInputDeviceId ? { deviceId: { exact: audioInputDeviceId } } : true,
+        video: false,
+      });
+      const ctx = new AudioContext();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+
+      const tick = () => {
+        if (!testingMicRef.current) return;
+        analyser.getByteTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) {
+          const normalized = (data[i] - 128) / 128;
+          sum += normalized * normalized;
+        }
+        setMicLevel(Math.min(1, Math.sqrt(sum / data.length) * 5));
+        requestAnimationFrame(tick);
+      };
+      tick();
+
+      setTimeout(() => {
+        stream.getTracks().forEach((t) => t.stop());
+        ctx.close().catch(() => {});
+        testingMicRef.current = false;
+        setTestingMic(false);
+      }, 5000);
+    } catch (err) {
+      console.error("Microphone test failed:", err);
+      testingMicRef.current = false;
+      setTestingMic(false);
+      setError("Unable to access microphone for test.");
+    }
+  };
+
+  useEffect(() => {
+    return () => stopCameraPreview();
+  }, [stopCameraPreview]);
+
   if (loading) {
     return (
       <div>
@@ -217,6 +324,46 @@ export function VoiceVideoSection() {
         >
           Refresh device list
         </button>
+
+        <div className="space-y-3 border-t border-bg-active pt-4">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-text-secondary">Quality Checks</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={testMicrophone}
+              className="rounded border border-bg-active px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary"
+            >
+              {testingMic ? "Stop Mic Test" : "Test Microphone"}
+            </button>
+            <button
+              type="button"
+              onClick={testSpeakerTone}
+              className="rounded border border-bg-active px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary"
+            >
+              Play Test Tone
+            </button>
+            <button
+              type="button"
+              onClick={() => (cameraPreviewOn ? stopCameraPreview() : startCameraPreview())}
+              className="rounded border border-bg-active px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary"
+            >
+              {cameraPreviewOn ? "Stop Camera Preview" : "Start Camera Preview"}
+            </button>
+          </div>
+          <div className="h-2 w-full rounded bg-bg-active">
+            <div
+              className="h-2 rounded bg-green transition-all"
+              style={{ width: `${Math.round(micLevel * 100)}%` }}
+            />
+          </div>
+          <video
+            id="camera-preview-video"
+            className={`w-full rounded bg-black ${cameraPreviewOn ? "block" : "hidden"}`}
+            autoPlay
+            muted
+            playsInline
+          />
+        </div>
       </div>
     </div>
   );

@@ -11,6 +11,8 @@ import { UserPanel } from "@/components/sidebar/UserPanel";
 import { QuickSwitcher } from "@/components/common/QuickSwitcher";
 import { SessionVerificationBanner } from "@/components/verification/SessionVerificationBanner";
 import { VerificationFlowModal } from "@/components/verification/VerificationFlowModal";
+import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 /**
  * Lightweight error boundary that silently swallows render errors in a
@@ -48,7 +50,7 @@ class SectionGuard extends Component<
 export function AppLayout() {
   const showMembers = useUiStore((s) => s.showMemberSidebar);
   const [showSwitcher, setShowSwitcher] = useState(false);
-  const [visible, setVisible] = useState(false);
+  const onboardingCompleted = useSettingsStore((s) => s.onboardingCompleted);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -61,15 +63,8 @@ export function AppLayout() {
     return () => document.removeEventListener("keydown", handleKey);
   }, []);
 
-  useEffect(() => {
-    requestAnimationFrame(() => setVisible(true));
-  }, []);
-
   return (
-    <div
-      className="flex h-screen w-screen flex-col overflow-hidden transition-opacity duration-300"
-      style={{ opacity: visible ? 1 : 0 }}
-    >
+    <div className="flex h-screen w-screen flex-col overflow-hidden">
       <SectionGuard name="TitleBar">
         <TitleBar />
       </SectionGuard>
@@ -105,6 +100,7 @@ export function AppLayout() {
       </SectionGuard>
       <RoomContextMenu />
       {showSwitcher && <QuickSwitcher onClose={() => setShowSwitcher(false)} />}
+      {!onboardingCompleted && <OnboardingWizard />}
     </div>
   );
 }

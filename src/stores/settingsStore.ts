@@ -14,6 +14,9 @@ export type FontSize = "small" | "normal" | "large";
 export type MessageDisplay = "cozy" | "compact";
 
 interface SettingsState {
+  // Onboarding
+  onboardingCompleted: boolean;
+
   // Privacy
   sendReadReceipts: boolean;
   sendTypingIndicators: boolean;
@@ -47,12 +50,14 @@ interface SettingsState {
   setAudioInputDeviceId: (v: string | null) => void;
   setAudioOutputDeviceId: (v: string | null) => void;
   setVideoInputDeviceId: (v: string | null) => void;
+  setOnboardingCompleted: (v: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       // Privacy defaults
+      onboardingCompleted: false,
       sendReadReceipts: true,
       sendTypingIndicators: true,
       allowDmFromAnyone: true,
@@ -85,6 +90,7 @@ export const useSettingsStore = create<SettingsState>()(
       setAudioInputDeviceId: (v) => set({ audioInputDeviceId: v }),
       setAudioOutputDeviceId: (v) => set({ audioOutputDeviceId: v }),
       setVideoInputDeviceId: (v) => set({ videoInputDeviceId: v }),
+      setOnboardingCompleted: (v) => set({ onboardingCompleted: v }),
     }),
     { name: "concord-settings" }
   )

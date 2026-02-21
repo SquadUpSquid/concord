@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { getMatrixClient } from "@/lib/matrix";
+import { requestOwnUserVerification, checkCurrentDeviceVerified } from "@/lib/verification";
+import { useVerificationStore } from "@/stores/verificationStore";
 
 interface DeviceInfo {
   deviceId: string;
@@ -16,6 +18,13 @@ export function SessionsSection() {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
+  const [removeTargetId, setRemoveTargetId] = useState<string | null>(null);
+  const [removePassword, setRemovePassword] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const deviceVerified = useVerificationStore((s) => s.deviceVerified);
+  const activeRequest = useVerificationStore((s) => s.activeRequest);
+  const incomingRequests = useVerificationStore((s) => s.incomingRequests);
+  const setActiveRequest = useVerificationStore((s) => s.setActiveRequest);
 
   const fetchDevices = useCallback(async () => {
     const client = getMatrixClient();
@@ -51,20 +60,67 @@ export function SessionsSection() {
     fetchDevices();
   }, [fetchDevices]);
 
-  const handleRemoveDevice = async (deviceId: string) => {
+  useEffect(() => {
+    const client = getMatrixClient();
+    if (client) {
+      checkCurrentDeviceVerified(client).catch(() => {});
+    }
+  }, []);
+
+  const handleStartVerification = async () => {
     const client = getMatrixClient();
     if (!client) return;
+    const pending = activeRequest ?? incomingRequests[0] ?? null;
+    if (pending) {
+      setActiveRequest(pending);
+      return;
+    }
+    setVerifying(true);
+    try {
+      await requestOwnUserVerification(client);
+    } catch {
+      setError("Failed to start verification.");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleRemoveDevice = async (deviceId: string) => {
+    setError(null);
+    setRemoveTargetId(deviceId);
+    setRemovePassword("");
+  };
+
+  const handleConfirmRemoveDevice = async (deviceId: string) => {
+    const client = getMatrixClient();
+    if (!client) return;
+    if (!removePassword.trim()) {
+      setError("Enter your account password to remove this session.");
+      return;
+    }
 
     setRemovingId(deviceId);
     try {
-      await client.deleteDevice(deviceId, { type: "m.login.password" } as never);
+      const userId = client.getUserId();
+      await client.deleteDevice(
+        deviceId,
+        {
+          type: "m.login.password",
+          identifier: userId ? { type: "m.id.user", user: userId } : undefined,
+          password: removePassword,
+        } as never
+      );
       setDevices((prev) => prev.filter((d) => d.deviceId !== deviceId));
+      setRemoveTargetId(null);
+      setRemovePassword("");
     } catch (err: unknown) {
-      const matrixErr = err as { data?: { flows?: unknown[] } };
+      const matrixErr = err as { data?: { flows?: unknown[]; errcode?: string; error?: string } };
       if (matrixErr?.data?.flows) {
-        setError("Removing this device requires re-authentication. This feature is coming soon.");
+        setError("This homeserver requires a different re-authentication flow to remove sessions.");
+      } else if (matrixErr?.data?.errcode === "M_FORBIDDEN") {
+        setError("Incorrect password. Please try again.");
       } else {
-        setError("Failed to remove device");
+        setError(matrixErr?.data?.error ?? "Failed to remove device");
       }
     } finally {
       setRemovingId(null);
@@ -104,6 +160,28 @@ export function SessionsSection() {
       <p className="mb-6 text-sm text-text-muted">
         Manage your active sessions. These are the devices currently logged into your Matrix account.
       </p>
+
+      <div className="mb-4 rounded-lg border border-bg-active bg-bg-secondary p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-text-primary">Session verification</p>
+            <p className="text-xs text-text-muted">
+              {deviceVerified === true
+                ? "This device is verified."
+                : "This device is not verified. Verify it with another trusted device."}
+            </p>
+          </div>
+          {deviceVerified !== true && (
+            <button
+              onClick={handleStartVerification}
+              disabled={verifying}
+              className="rounded-sm bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            >
+              {verifying ? "Starting..." : (activeRequest || incomingRequests.length > 0) ? "Continue verification" : "Verify this device"}
+            </button>
+          )}
+        </div>
+      </div>
 
       {error && (
         <div className="mb-4 rounded-lg border border-red/30 bg-red/10 p-3">
@@ -210,6 +288,42 @@ export function SessionsSection() {
                   )}
                 </div>
               </div>
+
+              {removeTargetId === device.deviceId && !device.isCurrent && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 rounded border border-bg-active bg-bg-tertiary p-2">
+                  <input
+                    type="password"
+                    value={removePassword}
+                    onChange={(e) => setRemovePassword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void handleConfirmRemoveDevice(device.deviceId);
+                      if (e.key === "Escape") {
+                        setRemoveTargetId(null);
+                        setRemovePassword("");
+                      }
+                    }}
+                    placeholder="Enter password to confirm"
+                    className="min-w-[220px] flex-1 rounded-sm bg-bg-input px-2 py-1.5 text-xs text-text-primary outline-none focus:ring-1 focus:ring-accent"
+                    autoFocus
+                  />
+                  <button
+                    onClick={() => void handleConfirmRemoveDevice(device.deviceId)}
+                    disabled={removingId === device.deviceId}
+                    className="rounded-sm bg-red px-3 py-1.5 text-xs font-medium text-white hover:bg-red/85 disabled:opacity-50"
+                  >
+                    {removingId === device.deviceId ? "Removing..." : "Confirm Remove"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRemoveTargetId(null);
+                      setRemovePassword("");
+                    }}
+                    className="rounded-sm border border-bg-active px-3 py-1.5 text-xs text-text-muted hover:text-text-primary"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

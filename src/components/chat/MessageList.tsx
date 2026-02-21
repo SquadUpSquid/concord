@@ -18,7 +18,13 @@ export function MessageList({ roomId }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [renderLimit, setRenderLimit] = useState(200);
   const isNearBottomRef = useRef(true);
+  const visibleMessages = messages.slice(-renderLimit);
+
+  useEffect(() => {
+    setRenderLimit(200);
+  }, [roomId]);
 
   // Auto-scroll when new messages arrive (only if already near bottom)
   useEffect(() => {
@@ -27,7 +33,7 @@ export function MessageList({ roomId }: MessageListProps) {
     } else {
       setShowScrollBtn(true);
     }
-  }, [messages.length]);
+  }, [visibleMessages.length]);
 
   const sendReadReceipts = useSettingsStore((s) => s.sendReadReceipts);
 
@@ -56,13 +62,23 @@ export function MessageList({ roomId }: MessageListProps) {
     isNearBottomRef.current = distFromBottom < 100;
     setShowScrollBtn(distFromBottom > 300);
 
+    if (el.scrollTop === 0 && renderLimit < messages.length) {
+      const beforeHeight = el.scrollHeight;
+      setRenderLimit((v) => Math.min(v + 200, messages.length));
+      requestAnimationFrame(() => {
+        const afterHeight = el.scrollHeight;
+        el.scrollTop = afterHeight - beforeHeight;
+      });
+      return;
+    }
+
     if (el.scrollTop === 0 && !isLoadingHistory) {
       const client = getMatrixClient();
       if (client) {
         loadMoreMessages(client, roomId);
       }
     }
-  }, [isLoadingHistory, roomId]);
+  }, [isLoadingHistory, roomId, renderLimit, messages.length]);
 
   const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -90,8 +106,19 @@ export function MessageList({ roomId }: MessageListProps) {
           </div>
         )}
 
-        {messages.map((msg, i) => {
-          const prev = messages[i - 1];
+        {renderLimit < messages.length && (
+          <div className="mb-3 text-center">
+            <button
+              onClick={() => setRenderLimit((v) => Math.min(v + 200, messages.length))}
+              className="rounded border border-bg-active px-3 py-1 text-xs text-text-muted hover:text-text-primary"
+            >
+              Show older messages ({messages.length - renderLimit} hidden)
+            </button>
+          </div>
+        )}
+
+        {visibleMessages.map((msg, i) => {
+          const prev = visibleMessages[i - 1];
           const showHeader =
             !prev ||
             prev.senderId !== msg.senderId ||

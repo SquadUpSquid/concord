@@ -10,6 +10,8 @@ import { mxcToHttp } from "@/utils/matrixHelpers";
 
 export function UserPanel() {
   const userId = useAuthStore((s) => s.userId);
+  const profileDisplayName = useAuthStore((s) => s.displayName);
+  const profileAvatarUrl = useAuthStore((s) => s.avatarUrl);
   const openModal = useUiStore((s) => s.openModal);
   const selectRoom = useRoomStore((s) => s.selectRoom);
 
@@ -35,10 +37,11 @@ export function UserPanel() {
 
   const client = getMatrixClient();
   const user = client?.getUser(userId ?? "");
-  const displayName = user?.displayName ?? userId ?? "User";
+  const localpart = userId?.startsWith("@") ? userId.slice(1).split(":")[0] : userId;
+  const displayName = user?.displayName ?? profileDisplayName ?? localpart ?? userId ?? "User";
   const avatarUrl = user && client
     ? mxcToHttp(user.avatarUrl ?? null, client.getHomeserverUrl())
-    : null;
+    : profileAvatarUrl;
   const mxcAvatarUrl = user?.avatarUrl ?? null;
 
   const inCall = !!activeCallRoomId && connectionState === "connected";

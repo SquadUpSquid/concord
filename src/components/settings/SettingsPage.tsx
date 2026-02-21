@@ -10,6 +10,7 @@ import { AboutSection } from "./AboutSection";
 import { DiagnosticsSection } from "./DiagnosticsSection";
 import { destroyMatrixClient } from "@/lib/matrix";
 import { useAuthStore } from "@/stores/authStore";
+import { useRoomStore } from "@/stores/roomStore";
 
 type SettingsTab =
   | "profile"
@@ -98,6 +99,7 @@ function TabIcon({ icon }: { icon: string }) {
 export function SettingsPage() {
   const closeModal = useUiStore((s) => s.closeModal);
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+  const resetRoomState = useRoomStore((s) => s.resetState);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -109,6 +111,7 @@ export function SettingsPage() {
 
   const handleLogout = async () => {
     await destroyMatrixClient();
+    resetRoomState();
     useAuthStore.getState().logout();
     closeModal();
   };

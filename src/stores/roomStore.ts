@@ -35,6 +35,7 @@ interface RoomState {
   selectSpace: (spaceId: string | null) => void;
   selectRoom: (roomId: string | null) => void;
   setSyncState: (state: RoomState["syncState"]) => void;
+  resetState: () => void;
 }
 
 export const useRoomStore = create<RoomState>()((set, get) => ({
@@ -67,4 +68,12 @@ export const useRoomStore = create<RoomState>()((set, get) => ({
   selectRoom: (roomId) => set({ selectedRoomId: roomId }),
 
   setSyncState: (syncState) => set({ syncState }),
+
+  resetState: () =>
+    set({
+      rooms: new Map(),
+      selectedSpaceId: null,
+      selectedRoomId: null,
+      syncState: "STOPPED",
+    }),
 }));

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
-import { loginToMatrix, registerToMatrix, initMatrixClient } from "@/lib/matrix";
+import { useRoomStore } from "@/stores/roomStore";
+import { loginToMatrix, registerToMatrix, initMatrixClient, hydrateOwnProfile } from "@/lib/matrix";
 import { registerEventHandlers } from "@/lib/matrixEventHandlers";
 import { TitleBar } from "@/components/layout/TitleBar";
 
@@ -8,6 +9,10 @@ const MATRIX_ORG_SIGNUP_URL = "https://app.element.io/#/register";
 type RegisterSupport = "unknown" | "available" | "disabled" | "unsupported" | "error";
 
 export function LoginPage() {
+  const setCredentials = useAuthStore((s) => s.setCredentials);
+  const setProfile = useAuthStore((s) => s.setProfile);
+  const logout = useAuthStore((s) => s.logout);
+  const resetRoomState = useRoomStore((s) => s.resetState);
   const [homeserver, setHomeserver] = useState("https://matrix.org");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -107,6 +112,7 @@ export function LoginPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
+    resetRoomState();
 
     try {
       const { accessToken, userId, deviceId } = await loginToMatrix(homeserver, username, password);
@@ -120,18 +126,21 @@ export function LoginPage() {
         deviceId
       );
       registerEventHandlers(client);
+      const profile = await hydrateOwnProfile(client);
 
       // Only mark as logged in after client is fully initialized
-      useAuthStore.getState().setCredentials({
+      setCredentials({
         accessToken,
         userId,
         deviceId,
         homeserverUrl: homeserver,
       });
+      setProfile(profile.displayName, profile.avatarUrl);
     } catch (err: unknown) {
       console.error("Login error:", err);
       // Safety: ensure we're logged out if anything failed
-      useAuthStore.getState().logout();
+      resetRoomState();
+      logout();
       let msg = "Login failed. Check your credentials.";
       if (err instanceof Error) {
         msg = err.message;

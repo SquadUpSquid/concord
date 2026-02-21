@@ -1,5 +1,6 @@
 import * as sdk from "matrix-js-sdk";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { mxcToHttp } from "@/utils/matrixHelpers";
 
 let matrixClient: sdk.MatrixClient | null = null;
 
@@ -121,6 +122,28 @@ export async function destroyMatrixClient(): Promise<void> {
     matrixClient.stopClient();
     matrixClient = null;
     emitClientChanged();
+  }
+}
+
+export async function hydrateOwnProfile(
+  client: sdk.MatrixClient
+): Promise<{ displayName: string; avatarUrl: string | null }> {
+  const userId = client.getUserId() ?? "";
+  const localpart = userId.startsWith("@") ? userId.slice(1).split(":")[0] : userId;
+
+  try {
+    const profile = await client.getProfileInfo(userId);
+    const displayName = profile?.displayname?.trim() || localpart || userId || "User";
+    const avatarUrl = profile?.avatar_url
+      ? mxcToHttp(profile.avatar_url, client.getHomeserverUrl())
+      : null;
+    return { displayName, avatarUrl };
+  } catch {
+    const user = client.getUser(userId);
+    return {
+      displayName: user?.displayName || localpart || userId || "User",
+      avatarUrl: user?.avatarUrl ? mxcToHttp(user.avatarUrl, client.getHomeserverUrl()) : null,
+    };
   }
 }
 

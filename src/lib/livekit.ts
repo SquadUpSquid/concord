@@ -73,7 +73,9 @@ async function fetchWellKnownLivekitFocus(
     if (wkRes?.ok) {
       const wk = await wkRes.json();
       const foci: any[] =
-        wk?.["org.matrix.msc4143.rtc.foci"] ?? [];
+        wk?.["org.matrix.msc4143.rtc_foci"] ??
+        wk?.["org.matrix.msc4143.rtc.foci"] ??
+        [];
       for (const f of foci) {
         if (f?.type === "livekit" && typeof f.livekit_service_url === "string") {
           cachedWellKnownFocus = {

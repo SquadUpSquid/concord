@@ -41,11 +41,17 @@
     "category": "SocialNetworking",
     "shortDescription": "A familiar, modern desktop client for Matrix",
     "linux": {
-      "deb": { "depends": [] },
-      "appimage": { "bundleMediaFramework": true }
+      "deb": {
+        "depends": []
+      },
+      "appimage": {
+        "bundleMediaFramework": true
+      }
     },
     "windows": {
-      "nsis": { "installMode": "currentUser" }
+      "nsis": {
+        "installMode": "currentUser"
+      }
     }
   },
   "plugins": {

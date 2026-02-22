@@ -23,6 +23,7 @@ let activeRoomId: string | null = null;
 
 /** MediaStream map shared with callStore's getFeedStream */
 const lkStreamMap = new Map<string, MediaStream>();
+const LK_DEBUG_MEDIA = true;
 
 export function getActiveLkRoom(): Room | null {
   return activeLkRoom;
@@ -34,6 +35,11 @@ export function getLkFeedStream(feedId: string): MediaStream | null {
 
 export function isLivekitActive(): boolean {
   return activeLkRoom !== null;
+}
+
+function logLkMedia(...args: unknown[]) {
+  if (!LK_DEBUG_MEDIA) return;
+  console.log("[livekit-media]", ...args);
 }
 
 // ---------------------------------------------------------------------------
@@ -355,9 +361,15 @@ function syncStreamsFromRoom(lkRoom: Room) {
     for (const t of mediaStream.getTracks()) {
       if (t.readyState === "ended") continue;
       // Main participant feed should expose at most one audio + one video track.
-      if (stream.getTracks().some((existing) => existing.kind === t.kind)) continue;
+      // If a participant rejoins/renegotiates, prefer the latest track for that kind.
+      const existingSameKind = stream.getTracks().find((existing) => existing.kind === t.kind);
+      if (existingSameKind && existingSameKind.id !== t.id) {
+        stream.removeTrack(existingSameKind);
+        logLkMedia("replaced track", { feedId, kind: t.kind, oldTrackId: existingSameKind.id, newTrackId: t.id });
+      }
       if (!stream.getTracks().some((existing) => existing.id === t.id)) {
         stream.addTrack(t);
+        logLkMedia("added track", { feedId, kind: t.kind, trackId: t.id });
       }
     }
   };
@@ -371,6 +383,15 @@ function syncStreamsFromRoom(lkRoom: Room) {
     const feedId = `lk:${rp.identity}`;
     for (const pub of rp.trackPublications.values()) {
       addPublicationTracks(feedId, pub);
+    }
+  }
+
+  if (LK_DEBUG_MEDIA) {
+    for (const [feedId, stream] of lkStreamMap) {
+      logLkMedia("feed snapshot", {
+        feedId,
+        tracks: stream.getTracks().map((t) => ({ id: t.id, kind: t.kind, readyState: t.readyState })),
+      });
     }
   }
 }
@@ -472,7 +493,14 @@ export async function joinLivekitCall(
   // Attach event listeners before connecting
   lkRoom.on(
     RoomEvent.TrackSubscribed,
-    (_track: RemoteTrack, _pub: RemoteTrackPublication, _participant: RemoteParticipant) => {
+    (track: RemoteTrack, pub: RemoteTrackPublication, participant: RemoteParticipant) => {
+      logLkMedia("TrackSubscribed", {
+        participant: participant.identity,
+        source: pub.source,
+        pubTrackSid: pub.trackSid,
+        kind: track.kind,
+        mediaTracks: track.mediaStream?.getTracks().map((t) => ({ id: t.id, kind: t.kind, readyState: t.readyState })),
+      });
       syncStreamsFromRoom(lkRoom);
       const participants = rebuildLkParticipants(lkRoom, matrixClient, roomId);
       const screenshareFeeds = rebuildScreenshareFeeds(lkRoom, matrixClient, roomId);
@@ -482,8 +510,15 @@ export async function joinLivekitCall(
 
   lkRoom.on(
     RoomEvent.TrackUnsubscribed,
-    (_track: RemoteTrack, _pub: RemoteTrackPublication, _participant: RemoteParticipant) => {
-      _track.detach();
+    (track: RemoteTrack, pub: RemoteTrackPublication, participant: RemoteParticipant) => {
+      logLkMedia("TrackUnsubscribed", {
+        participant: participant.identity,
+        source: pub.source,
+        pubTrackSid: pub.trackSid,
+        kind: track.kind,
+        mediaTracks: track.mediaStream?.getTracks().map((t) => ({ id: t.id, kind: t.kind, readyState: t.readyState })),
+      });
+      track.detach();
       syncStreamsFromRoom(lkRoom);
       const participants = rebuildLkParticipants(lkRoom, matrixClient, roomId);
       const screenshareFeeds = rebuildScreenshareFeeds(lkRoom, matrixClient, roomId);
@@ -491,7 +526,8 @@ export async function joinLivekitCall(
     },
   );
 
-  lkRoom.on(RoomEvent.ParticipantConnected, () => {
+  lkRoom.on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
+    logLkMedia("ParticipantConnected", { participant: participant.identity });
     // If the same Matrix user reconnects with a new LiveKit identity, purge any
     // stale feed streams so they rejoin with a clean media state.
     for (const [, rp] of lkRoom.remoteParticipants) {
@@ -504,6 +540,7 @@ export async function joinLivekitCall(
   });
 
   lkRoom.on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
+    logLkMedia("ParticipantDisconnected", { participant: participant.identity });
     removeParticipantMedia(participant.identity);
     syncStreamsFromRoom(lkRoom);
     const participants = rebuildLkParticipants(lkRoom, matrixClient, roomId);

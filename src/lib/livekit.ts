@@ -330,43 +330,44 @@ function rebuildLkParticipants(
 function syncStreamsFromRoom(lkRoom: Room) {
   lkStreamMap.clear();
 
-  // Local tracks
-  const localId = `lk:${lkRoom.localParticipant.identity}`;
-  for (const pub of lkRoom.localParticipant.trackPublications.values()) {
-    if (pub.track?.mediaStream) {
-      if (pub.source === Track.Source.ScreenShare) {
-        lkStreamMap.set(`screenshare:${localId}`, pub.track.mediaStream);
-      } else {
-        const existing = lkStreamMap.get(localId);
-        if (existing) {
-          for (const t of pub.track.mediaStream.getTracks()) {
-            if (!existing.getTracks().includes(t)) existing.addTrack(t);
-          }
-        } else {
-          lkStreamMap.set(localId, pub.track.mediaStream);
+  const addPublicationTracks = (feedId: string, pub: { source: Track.Source; track?: { mediaStream?: MediaStream } | null }) => {
+    const mediaStream = pub.track?.mediaStream;
+    if (!mediaStream) return;
+
+    if (pub.source === Track.Source.ScreenShare) {
+      // Build a fresh stream to avoid reusing/mutating SDK-owned streams across re-subscribes.
+      const stream = new MediaStream();
+      for (const t of mediaStream.getTracks()) {
+        if (!stream.getTracks().some((existing) => existing.id === t.id)) {
+          stream.addTrack(t);
         }
       }
+      lkStreamMap.set(`screenshare:${feedId}`, stream);
+      return;
     }
+
+    let stream = lkStreamMap.get(feedId);
+    if (!stream) {
+      stream = new MediaStream();
+      lkStreamMap.set(feedId, stream);
+    }
+
+    for (const t of mediaStream.getTracks()) {
+      if (!stream.getTracks().some((existing) => existing.id === t.id)) {
+        stream.addTrack(t);
+      }
+    }
+  };
+
+  const localId = `lk:${lkRoom.localParticipant.identity}`;
+  for (const pub of lkRoom.localParticipant.trackPublications.values()) {
+    addPublicationTracks(localId, pub);
   }
 
-  // Remote tracks
   for (const [, rp] of lkRoom.remoteParticipants) {
     const feedId = `lk:${rp.identity}`;
     for (const pub of rp.trackPublications.values()) {
-      if (pub.track?.mediaStream) {
-        if (pub.source === Track.Source.ScreenShare) {
-          lkStreamMap.set(`screenshare:${feedId}`, pub.track.mediaStream);
-        } else {
-          const existing = lkStreamMap.get(feedId);
-          if (existing) {
-            for (const t of pub.track.mediaStream.getTracks()) {
-              if (!existing.getTracks().includes(t)) existing.addTrack(t);
-            }
-          } else {
-            lkStreamMap.set(feedId, pub.track.mediaStream);
-          }
-        }
-      }
+      addPublicationTracks(feedId, pub);
     }
   }
 }
@@ -428,6 +429,18 @@ export async function joinLivekitCall(
 ): Promise<void> {
   const webrtcErr = checkWebRTCSupport();
   if (webrtcErr) throw new Error(webrtcErr);
+
+  // Defensive cleanup in case a previous room is still tearing down.
+  if (activeLkRoom) {
+    try {
+      activeLkRoom.removeAllListeners();
+      activeLkRoom.disconnect();
+    } catch (err) {
+      console.warn("[livekit] Failed to disconnect previous room before join:", err);
+    }
+    activeLkRoom = null;
+    lkStreamMap.clear();
+  }
 
   const lkRoom = new Room({
     adaptiveStream: true,
@@ -541,9 +554,37 @@ export async function joinLivekitCall(
 export async function leaveLivekitCall(matrixClient: MatrixClient): Promise<void> {
   stopMembershipRenewal();
 
-  if (activeLkRoom) {
-    activeLkRoom.disconnect();
-    activeLkRoom = null;
+  const roomToClose = activeLkRoom;
+  activeLkRoom = null;
+
+  if (roomToClose) {
+    try {
+      // Prevent intentional disconnect from re-entering store.leaveCall() via RoomEvent.Disconnected.
+      roomToClose.removeAllListeners();
+
+      for (const pub of roomToClose.localParticipant.trackPublications.values()) {
+        try {
+          pub.track?.detach?.();
+          pub.track?.stop?.();
+        } catch {
+          // best effort
+        }
+      }
+
+      for (const [, rp] of roomToClose.remoteParticipants) {
+        for (const pub of rp.trackPublications.values()) {
+          try {
+            pub.track?.detach?.();
+          } catch {
+            // best effort
+          }
+        }
+      }
+
+      roomToClose.disconnect();
+    } catch (err) {
+      console.warn("[livekit] Error while disconnecting room:", err);
+    }
   }
 
   if (activeRoomId) {

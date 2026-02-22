@@ -135,9 +135,15 @@ export const useCallStore = create<CallState>()((set, get) => ({
       return;
     }
 
-    // Leave current call if in one
-    if (get().activeCallRoomId) {
-      get().leaveCall();
+    // Leave current call if in one. Await teardown to avoid overlapping rooms/listeners.
+    if (get().activeCallRoomId && client) {
+      try {
+        await leaveLivekitCall(client);
+      } catch (err) {
+        console.warn("Error during pre-join LiveKit leave:", err);
+      }
+      const roomParticipants = get().participantsByRoom;
+      set({ ...initialState, participantsByRoom: roomParticipants });
     }
 
     set({ connectionState: "connecting", activeCallRoomId: roomId, error: null });

@@ -140,7 +140,7 @@ export function ChannelSidebar() {
   }
 
   function handleItemDragOver(e: React.DragEvent, catId: string, index: number) {
-    if (!hasType(e.dataTransfer.types, CHANNEL_DND_TYPE)) return;
+    if (!draggingId) return;
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = "move";
@@ -455,9 +455,9 @@ export function ChannelSidebar() {
                   draggable={canManage}
                   onDragStart={canManage ? (e) => handleSectionDragStart(e, sectionId) : undefined}
                   onDragOver={canManage ? (e) => {
-                    if (hasType(e.dataTransfer.types, SECTION_DND_TYPE)) {
+                    if (draggingSectionId) {
                       handleSectionDragOver(e, secIdx);
-                    } else if (hasType(e.dataTransfer.types, CHANNEL_DND_TYPE)) {
+                    } else if (draggingId) {
                       e.preventDefault();
                       e.dataTransfer.dropEffect = "move";
                     }
@@ -515,7 +515,7 @@ export function ChannelSidebar() {
                       {sectionChannels.length === 0 ? (
                         <div
                           className={`rounded px-2 py-1.5 text-xs text-text-muted ${!isDefault ? "italic" : ""} ${canManage && dragOverTarget?.catId === sectionId ? "bg-accent/10" : ""}`}
-                          onDragOver={canManage ? (e) => { if (!hasType(e.dataTransfer.types, CHANNEL_DND_TYPE)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; setDragOverTarget({ catId: sectionId, index: 0 }); } : undefined}
+                          onDragOver={canManage ? (e) => { if (!draggingId) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; setDragOverTarget({ catId: sectionId, index: 0 }); } : undefined}
                           onDrop={canManage ? (e) => handleDrop(e, sectionId) : undefined}
                         >{emptyLabel}</div>
                       ) : (

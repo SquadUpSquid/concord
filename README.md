@@ -16,7 +16,7 @@
   Built with React, TypeScript, and Tauri
 </p>
 
-<p align="center"><i>Work in progress — no official release yet</i></p>
+<p align="center"><i>Work in progress</i></p>
 
 ---
 

@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { Avatar } from "@/components/common/Avatar";
 import { CallParticipant, getFeedStream } from "@/stores/callStore";
 import { useCallStore } from "@/stores/callStore";
-import { useSettingsStore } from "@/stores/settingsStore";
 
 interface VoiceParticipantProps {
   participant: CallParticipant;
@@ -11,9 +10,7 @@ interface VoiceParticipantProps {
 
 export function VoiceParticipant({ participant, isLocal = false }: VoiceParticipantProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
   const isDeafened = useCallStore((s) => s.isDeafened);
-  const audioOutputDeviceId = useSettingsStore((s) => s.audioOutputDeviceId);
 
   const stream = participant.feedId ? getFeedStream(participant.feedId) : null;
   const hasVideo = stream?.getVideoTracks().some((t) => t.enabled) && !participant.isVideoMuted;
@@ -34,30 +31,6 @@ export function VoiceParticipant({ participant, isLocal = false }: VoiceParticip
     };
   }, [stream, hasVideo]);
 
-  // Attach audio stream for remote participants and apply output device
-  useEffect(() => {
-    const el = audioRef.current;
-    if (!el || isLocal) return;
-
-    if (stream) {
-      el.srcObject = stream;
-      if (audioOutputDeviceId && "setSinkId" in el) {
-        (el as HTMLAudioElement & { setSinkId(id: string): Promise<void> })
-          .setSinkId(audioOutputDeviceId)
-          .catch((err) => console.warn("Failed to set audio output device:", err));
-      }
-    } else {
-      el.srcObject = null;
-    }
-
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.srcObject = null;
-      }
-    };
-  }, [stream, isLocal, audioOutputDeviceId]);
-
   const isMuted = participant.isAudioMuted;
   const isSpeaking = participant.isSpeaking && !isMuted;
 
@@ -67,23 +40,13 @@ export function VoiceParticipant({ participant, isLocal = false }: VoiceParticip
         isSpeaking ? "ring-2 ring-green" : "ring-1 ring-bg-tertiary"
       }`}
     >
-      {/* Audio playback for remote participants */}
-      {!isLocal && (
-        <audio
-          ref={audioRef}
-          autoPlay
-          playsInline
-          muted={isDeafened}
-        />
-      )}
-
       {/* Video feed */}
       {hasVideo ? (
         <video
           ref={videoRef}
           autoPlay
           playsInline
-          muted
+          muted={isLocal || isDeafened}
           className="h-full w-full rounded-md object-cover"
         />
       ) : (

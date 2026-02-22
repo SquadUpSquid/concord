@@ -2,6 +2,7 @@ import {
   Room,
   RoomEvent,
   Track,
+  AudioPresets,
   RemoteParticipant,
   RemoteTrackPublication,
   RemoteTrack,
@@ -486,6 +487,11 @@ export async function joinLivekitCall(
   const lkRoom = new Room({
     adaptiveStream: true,
     dynacast: true,
+    publishDefaults: {
+      audioPreset: AudioPresets.speech,
+      red: false,
+      dtx: false,
+    },
   });
 
   const store = useCallStore.getState();

@@ -6,8 +6,6 @@ import { useCategoryStore, generateCategoryId, buildSectionOrder, Category } fro
 import { ChannelItem } from "./ChannelItem";
 import { DmItem } from "./DmItem";
 import { InviteItem } from "./InviteItem";
-import { useAuthStore } from "@/stores/authStore";
-import { getMatrixClient } from "@/lib/matrix";
 import { POWER_LEVEL_MODERATOR } from "@/utils/roles";
 import { EmojiText } from "@/components/common/Emoji";
 
@@ -21,7 +19,6 @@ export function ChannelSidebar() {
   const selectedSpaceId = useRoomStore((s) => s.selectedSpaceId);
   const selectedRoomId = useRoomStore((s) => s.selectedRoomId);
   const selectRoom = useRoomStore((s) => s.selectRoom);
-  const userId = useAuthStore((s) => s.userId);
   const openModal = useUiStore((s) => s.openModal);
 
   const [orphanCollapsed, setOrphanCollapsed] = useState(false);
@@ -109,14 +106,10 @@ export function ChannelSidebar() {
 
   // Only admins/moderators can organize channels and sections
   const mySpacePowerLevel = useMemo(() => {
-    if (!selectedSpaceId || !userId) return 0;
-    const client = getMatrixClient();
-    if (!client) return 0;
-    const room = client.getRoom(selectedSpaceId);
-    if (!room) return 0;
-    const pl = room.currentState.getStateEvents("m.room.power_levels", "")?.getContent();
-    return pl?.users?.[userId] ?? pl?.users_default ?? 0;
-  }, [selectedSpaceId, userId]);
+    if (!selectedSpaceId) return 0;
+    const space = rooms.get(selectedSpaceId);
+    return space?.myPowerLevel ?? 0;
+  }, [selectedSpaceId, rooms]);
 
   const canManage = selectedSpaceId !== null && mySpacePowerLevel >= POWER_LEVEL_MODERATOR;
 

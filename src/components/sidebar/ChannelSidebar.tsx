@@ -11,6 +11,11 @@ import { EmojiText } from "@/components/common/Emoji";
 
 const CHANNEL_DND_TYPE = "application/x-concord-channel";
 const SECTION_DND_TYPE = "application/x-concord-section";
+
+/** Check if a DnD type is present (works with both Array and DOMStringList). */
+function hasType(types: DataTransfer["types"], type: string): boolean {
+  return Array.prototype.includes.call(types, type);
+}
 const EMPTY_CATEGORIES: Category[] = [];
 const EMPTY_ORDER: string[] = [];
 
@@ -135,7 +140,7 @@ export function ChannelSidebar() {
   }
 
   function handleItemDragOver(e: React.DragEvent, catId: string, index: number) {
-    if (!e.dataTransfer.types.includes(CHANNEL_DND_TYPE)) return;
+    if (!hasType(e.dataTransfer.types, CHANNEL_DND_TYPE)) return;
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = "move";
@@ -171,7 +176,7 @@ export function ChannelSidebar() {
 
   function handleDrop(e: React.DragEvent, targetCatId: string) {
     // Section drags: let the event bubble up to the section-level handler
-    if (e.dataTransfer.types.includes(SECTION_DND_TYPE)) return;
+    if (hasType(e.dataTransfer.types, SECTION_DND_TYPE)) return;
     e.preventDefault();
     e.stopPropagation();
     const insertIndex = dragOverTarget?.index ?? 0;
@@ -228,7 +233,7 @@ export function ChannelSidebar() {
   }
 
   function handleSectionDragOver(e: React.DragEvent, index: number) {
-    if (!e.dataTransfer.types.includes(SECTION_DND_TYPE)) return;
+    if (!hasType(e.dataTransfer.types, SECTION_DND_TYPE)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     const rect = e.currentTarget.getBoundingClientRect();
@@ -450,12 +455,15 @@ export function ChannelSidebar() {
                   draggable={canManage}
                   onDragStart={canManage ? (e) => handleSectionDragStart(e, sectionId) : undefined}
                   onDragOver={canManage ? (e) => {
-                    if (e.dataTransfer.types.includes(SECTION_DND_TYPE)) {
+                    if (hasType(e.dataTransfer.types, SECTION_DND_TYPE)) {
                       handleSectionDragOver(e, secIdx);
+                    } else if (hasType(e.dataTransfer.types, CHANNEL_DND_TYPE)) {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
                     }
                   } : undefined}
                   onDrop={canManage ? (e) => {
-                    if (e.dataTransfer.types.includes(SECTION_DND_TYPE)) handleSectionDrop(e);
+                    if (hasType(e.dataTransfer.types, SECTION_DND_TYPE)) handleSectionDrop(e);
                     else handleDrop(e, sectionId);
                   } : undefined}
                   onDragEnd={canManage ? handleDragEnd : undefined}
@@ -507,7 +515,7 @@ export function ChannelSidebar() {
                       {sectionChannels.length === 0 ? (
                         <div
                           className={`rounded px-2 py-1.5 text-xs text-text-muted ${!isDefault ? "italic" : ""} ${canManage && dragOverTarget?.catId === sectionId ? "bg-accent/10" : ""}`}
-                          onDragOver={canManage ? (e) => { if (!e.dataTransfer.types.includes(CHANNEL_DND_TYPE)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; setDragOverTarget({ catId: sectionId, index: 0 }); } : undefined}
+                          onDragOver={canManage ? (e) => { if (!hasType(e.dataTransfer.types, CHANNEL_DND_TYPE)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; setDragOverTarget({ catId: sectionId, index: 0 }); } : undefined}
                           onDrop={canManage ? (e) => handleDrop(e, sectionId) : undefined}
                         >{emptyLabel}</div>
                       ) : (
@@ -541,12 +549,12 @@ export function ChannelSidebar() {
               <div
                 className="relative h-2"
                 onDragOver={(e) => {
-                  if (!e.dataTransfer.types.includes(SECTION_DND_TYPE)) return;
+                  if (!hasType(e.dataTransfer.types, SECTION_DND_TYPE)) return;
                   e.preventDefault();
                   e.dataTransfer.dropEffect = "move";
                   setSectionDropIndex(sectionOrder.length);
                 }}
-                onDrop={(e) => { if (e.dataTransfer.types.includes(SECTION_DND_TYPE)) handleSectionDrop(e); }}
+                onDrop={(e) => { if (hasType(e.dataTransfer.types, SECTION_DND_TYPE)) handleSectionDrop(e); }}
               >
                 {sectionDropIndex === sectionOrder.length && draggingSectionId && (
                   <div className="absolute left-0 right-0 top-0 z-10 h-0.5 rounded bg-accent" />

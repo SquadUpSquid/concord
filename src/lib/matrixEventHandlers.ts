@@ -393,6 +393,7 @@ async function applySyncReady(client: MatrixClient, hasInitiallySyncedRef: { cur
 
 let _registeredClient: MatrixClient | null = null;
 let _verificationCleanup: (() => void) | null = null;
+let _voiceRescanInterval: ReturnType<typeof setInterval> | null = null;
 
 export function registerEventHandlers(client: MatrixClient): void {
   // Prevent registering duplicate listeners on the same client instance
@@ -400,6 +401,10 @@ export function registerEventHandlers(client: MatrixClient): void {
   if (_registeredClient === client) return;
   _verificationCleanup?.();
   _verificationCleanup = null;
+  if (_voiceRescanInterval) {
+    clearInterval(_voiceRescanInterval);
+    _voiceRescanInterval = null;
+  }
   _registeredClient = client;
 
   _verificationCleanup = subscribeVerificationEvents(client);
@@ -663,7 +668,7 @@ export function registerEventHandlers(client: MatrixClient): void {
 
   // Periodic re-scan: state events can be missed (e.g. during initial sync race).
   // Re-scan voice rooms every 15 seconds to catch any missed updates.
-  setInterval(() => {
+  _voiceRescanInterval = setInterval(() => {
     const rooms = client.getRooms();
     for (const room of rooms) {
       const hasCallEvents =
@@ -767,7 +772,14 @@ function scanVoiceParticipants(client: MatrixClient, roomId: string): void {
 
     // Format 3: Per-device session content (has "application" field)
     if (!isActive && typeof content["application"] === "string") {
-      isActive = true;
+      const expiresMs = content["expires"] ?? content["expires_ts"];
+      const createdTs = content["created_ts"] ?? event.getTs();
+      if (typeof expiresMs === "number" && typeof createdTs === "number") {
+        isActive = createdTs + expiresMs >= now;
+      } else {
+        // If the event omits expiry metadata, keep legacy behavior.
+        isActive = true;
+      }
     }
 
     if (isActive) {

@@ -270,19 +270,31 @@ function stopMembershipRenewal() {
 // Participant mapping helpers
 // ---------------------------------------------------------------------------
 
+/** Extract the Matrix userId from a LiveKit identity (userId:deviceId → userId). */
+function extractUserId(identity: string): string {
+  // LiveKit identity is "userId:deviceId" (e.g. "@user:server.com:DEVICEID").
+  // Matrix userIds contain exactly one colon (@localpart:server), so split
+  // on the second colon to strip the device suffix.
+  const firstColon = identity.indexOf(":");
+  if (firstColon === -1) return identity;
+  const secondColon = identity.indexOf(":", firstColon + 1);
+  return secondColon === -1 ? identity : identity.slice(0, secondColon);
+}
+
 function participantToCallParticipant(
   p: Participant,
   matrixClient: MatrixClient,
   roomId: string,
 ): CallParticipant {
   const identity = p.identity;
+  const userId = extractUserId(identity);
   const room = matrixClient.getRoom(roomId);
-  const member = room?.getMember(identity) ?? null;
+  const member = room?.getMember(userId) ?? null;
   const homeserverUrl = matrixClient.getHomeserverUrl();
 
   return {
-    userId: identity,
-    displayName: member?.name ?? p.name ?? identity,
+    userId,
+    displayName: member?.name ?? p.name ?? userId,
     avatarUrl: member ? mxcToHttp(member.getMxcAvatarUrl(), homeserverUrl) : null,
     mxcAvatarUrl: member?.getMxcAvatarUrl() ?? null,
     isSpeaking: p.isSpeaking,
@@ -367,12 +379,13 @@ function rebuildScreenshareFeeds(
   const checkParticipant = (p: Participant) => {
     for (const pub of p.trackPublications.values()) {
       if (pub.source === Track.Source.ScreenShare && pub.track) {
+        const userId = extractUserId(p.identity);
         const room = matrixClient.getRoom(roomId);
-        const member = room?.getMember(p.identity);
+        const member = room?.getMember(userId);
         feeds.push({
           feedId: `screenshare:lk:${p.identity}`,
-          userId: p.identity,
-          displayName: member?.name ?? p.name ?? p.identity,
+          userId,
+          displayName: member?.name ?? p.name ?? userId,
         });
       }
     }

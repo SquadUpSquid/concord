@@ -353,6 +353,9 @@ function syncStreamsFromRoom(lkRoom: Room) {
     }
 
     for (const t of mediaStream.getTracks()) {
+      if (t.readyState === "ended") continue;
+      // Main participant feed should expose at most one audio + one video track.
+      if (stream.getTracks().some((existing) => existing.kind === t.kind)) continue;
       if (!stream.getTracks().some((existing) => existing.id === t.id)) {
         stream.addTrack(t);
       }

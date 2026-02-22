@@ -20,21 +20,42 @@ export function VoiceParticipant({ participant, isLocal = false }: VoiceParticip
 
   // Attach video stream when video is active
   useEffect(() => {
-    if (videoRef.current && stream && hasVideo) {
-      videoRef.current.srcObject = stream;
+    const el = videoRef.current;
+    if (!el) return;
+
+    if (stream && hasVideo) {
+      el.srcObject = stream;
+    } else {
+      el.srcObject = null;
     }
+
+    return () => {
+      if (videoRef.current) videoRef.current.srcObject = null;
+    };
   }, [stream, hasVideo]);
 
   // Attach audio stream for remote participants and apply output device
   useEffect(() => {
-    if (isLocal || !audioRef.current || !stream) return;
     const el = audioRef.current;
-    el.srcObject = stream;
-    if (audioOutputDeviceId && "setSinkId" in el) {
-      (el as HTMLAudioElement & { setSinkId(id: string): Promise<void> })
-        .setSinkId(audioOutputDeviceId)
-        .catch((err) => console.warn("Failed to set audio output device:", err));
+    if (!el || isLocal) return;
+
+    if (stream) {
+      el.srcObject = stream;
+      if (audioOutputDeviceId && "setSinkId" in el) {
+        (el as HTMLAudioElement & { setSinkId(id: string): Promise<void> })
+          .setSinkId(audioOutputDeviceId)
+          .catch((err) => console.warn("Failed to set audio output device:", err));
+      }
+    } else {
+      el.srcObject = null;
     }
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.srcObject = null;
+      }
+    };
   }, [stream, isLocal, audioOutputDeviceId]);
 
   const isMuted = participant.isAudioMuted;

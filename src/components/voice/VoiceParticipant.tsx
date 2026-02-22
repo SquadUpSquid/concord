@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Avatar } from "@/components/common/Avatar";
 import { CallParticipant, getFeedStream } from "@/stores/callStore";
-import { useCallStore } from "@/stores/callStore";
 
 interface VoiceParticipantProps {
   participant: CallParticipant;
@@ -10,7 +9,6 @@ interface VoiceParticipantProps {
 
 export function VoiceParticipant({ participant, isLocal = false }: VoiceParticipantProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const isDeafened = useCallStore((s) => s.isDeafened);
 
   const stream = participant.feedId ? getFeedStream(participant.feedId) : null;
   const hasVideo = stream?.getVideoTracks().some((t) => t.enabled) && !participant.isVideoMuted;
@@ -21,7 +19,13 @@ export function VoiceParticipant({ participant, isLocal = false }: VoiceParticip
     if (!el) return;
 
     if (stream && hasVideo) {
-      el.srcObject = stream;
+      const videoOnly = new MediaStream();
+      for (const t of stream.getVideoTracks()) {
+        if (!videoOnly.getVideoTracks().some((existing) => existing.id === t.id)) {
+          videoOnly.addTrack(t);
+        }
+      }
+      el.srcObject = videoOnly;
     } else {
       el.srcObject = null;
     }
@@ -46,7 +50,7 @@ export function VoiceParticipant({ participant, isLocal = false }: VoiceParticip
           ref={videoRef}
           autoPlay
           playsInline
-          muted={isLocal || isDeafened}
+          muted
           className="h-full w-full rounded-md object-cover"
         />
       ) : (

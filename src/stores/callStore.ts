@@ -115,14 +115,14 @@ function toUserFriendlyError(err: unknown): string {
   }
 
   if (msg.includes("PC") || msg.includes("PeerConnection") || msg.includes("peer connection") || msg.includes("ICE")) {
-    return `Could not establish a connection to other participants. This may be caused by network restrictions or missing TURN server configuration.\n\n[Debug] ${msg}`;
+    return `Could not establish a connection to other participants. This may be caused by network restrictions or missing TURN server configuration.\n\nDetails: ${msg}`;
   }
 
   if (msg.includes("getUserMedia") || msg.includes("media devices")) {
     return "Could not access media devices. Please check that your microphone is connected and permissions are granted.";
   }
 
-  return `${msg || "Failed to join voice channel. Please try again."}\n\n[Debug] ${msg}`;
+  return msg || "Failed to join voice channel. Please try again.";
 }
 
 export const useCallStore = create<CallState>()((set, get) => ({
@@ -170,10 +170,9 @@ export const useCallStore = create<CallState>()((set, get) => ({
       try {
         await joinLivekitCall(client, roomId, url, jwt, lkFocus);
       } catch (connectErr) {
-        // Re-throw with connection details so we can diagnose
         const detail = connectErr instanceof Error ? connectErr.message : String(connectErr);
         throw new Error(
-          `LiveKit connection failed.\nSFU URL: ${lkFocus.livekitServiceUrl}\nWS URL: ${url}\nError: ${detail}`
+          `LiveKit connection failed.\nSFU: ${lkFocus.livekitServiceUrl}\nServer: ${url}\n${detail}`
         );
       }
 

@@ -45,6 +45,7 @@ interface CallState {
   participants: Map<string, CallParticipant>;
   /** Active screenshare feeds for the current call (feedId -> displayName) */
   screenshareFeeds: { feedId: string; userId: string; displayName: string }[];
+  screenshareAudioPrefs: Record<string, { muted: boolean; volume: number }>;
   activeSpeakerId: string | null;
   participantsByRoom: Map<string, CallParticipant[]>;
 
@@ -54,6 +55,8 @@ interface CallState {
   toggleVideo: () => Promise<void>;
   toggleDeafen: () => void;
   toggleScreenShare: () => Promise<void>;
+  setScreenshareAudioMuted: (feedId: string, muted: boolean) => void;
+  setScreenshareAudioVolume: (feedId: string, volume: number) => void;
   setParticipants: (participants: Map<string, CallParticipant>) => void;
   setActiveSpeaker: (userId: string | null) => void;
   setConnectionState: (state: CallConnectionState) => void;
@@ -79,6 +82,7 @@ const initialState = {
   isScreenSharing: false,
   participants: new Map<string, CallParticipant>(),
   screenshareFeeds: [] as { feedId: string; userId: string; displayName: string }[],
+  screenshareAudioPrefs: {} as Record<string, { muted: boolean; volume: number }>,
   activeSpeakerId: null,
   participantsByRoom: new Map<string, CallParticipant[]>(),
 };
@@ -135,9 +139,15 @@ export const useCallStore = create<CallState>()((set, get) => ({
       return;
     }
 
-    // Leave current call if in one
-    if (get().activeCallRoomId) {
-      get().leaveCall();
+    // Leave current call if in one. Await teardown to avoid overlapping rooms/listeners.
+    if (get().activeCallRoomId && client) {
+      try {
+        await leaveLivekitCall(client);
+      } catch (err) {
+        console.warn("Error during pre-join LiveKit leave:", err);
+      }
+      const roomParticipants = get().participantsByRoom;
+      set({ ...initialState, participantsByRoom: roomParticipants });
     }
 
     set({ connectionState: "connecting", activeCallRoomId: roomId, error: null });
@@ -258,6 +268,31 @@ export const useCallStore = create<CallState>()((set, get) => ({
       const lkRoom = getActiveLkRoom();
       set({ isScreenSharing: lkRoom?.localParticipant.isScreenShareEnabled ?? false });
     }
+  },
+
+  setScreenshareAudioMuted: (feedId, muted) => {
+    set((state) => ({
+      screenshareAudioPrefs: {
+        ...state.screenshareAudioPrefs,
+        [feedId]: {
+          muted,
+          volume: state.screenshareAudioPrefs[feedId]?.volume ?? 100,
+        },
+      },
+    }));
+  },
+
+  setScreenshareAudioVolume: (feedId, volume) => {
+    const clamped = Math.max(0, Math.min(100, volume));
+    set((state) => ({
+      screenshareAudioPrefs: {
+        ...state.screenshareAudioPrefs,
+        [feedId]: {
+          muted: state.screenshareAudioPrefs[feedId]?.muted ?? false,
+          volume: clamped,
+        },
+      },
+    }));
   },
 
   setParticipants: (participants) => set({ participants }),

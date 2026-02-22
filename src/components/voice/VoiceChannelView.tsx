@@ -7,6 +7,7 @@ import { Avatar } from "@/components/common/Avatar";
 import { VoiceParticipant } from "./VoiceParticipant";
 import { VoiceChatPanel } from "./VoiceChatPanel";
 import { ScreenshareFeedView } from "./ScreenshareFeedView";
+import { RemoteAudioRenderer } from "./RemoteAudioRenderer";
 import { getMatrixClient } from "@/lib/matrix";
 import { loadRoomMessages } from "@/lib/matrixEventHandlers";
 
@@ -214,6 +215,7 @@ export function VoiceChannelView({ roomId }: VoiceChannelViewProps) {
         ) : (
           /* In call - show screenshares + participants grid */
           <div className="flex w-full max-w-3xl flex-1 flex-col gap-4">
+            <RemoteAudioRenderer />
             {screenshareFeeds.length > 0 && (
               <div className="grid w-full gap-4 sm:grid-cols-2">
                 {screenshareFeeds.map((f) => (

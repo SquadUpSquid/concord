@@ -111,14 +111,14 @@ function toUserFriendlyError(err: unknown): string {
   }
 
   if (msg.includes("PC") || msg.includes("PeerConnection") || msg.includes("peer connection") || msg.includes("ICE")) {
-    return "Could not establish a connection to other participants. This may be caused by network restrictions or missing TURN server configuration.";
+    return `Could not establish a connection to other participants. This may be caused by network restrictions or missing TURN server configuration.\n\n[Debug] ${msg}`;
   }
 
   if (msg.includes("getUserMedia") || msg.includes("media devices")) {
     return "Could not access media devices. Please check that your microphone is connected and permissions are granted.";
   }
 
-  return msg || "Failed to join voice channel. Please try again.";
+  return `${msg || "Failed to join voice channel. Please try again."}\n\n[Debug] ${msg}`;
 }
 
 export const useCallStore = create<CallState>()((set, get) => ({

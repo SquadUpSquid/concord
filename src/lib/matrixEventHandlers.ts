@@ -394,6 +394,7 @@ async function applySyncReady(client: MatrixClient, hasInitiallySyncedRef: { cur
 let _registeredClient: MatrixClient | null = null;
 let _verificationCleanup: (() => void) | null = null;
 let _voiceRescanInterval: ReturnType<typeof setInterval> | null = null;
+const _voiceStateOnlyMissingSince = new Map<string, number>();
 
 export function registerEventHandlers(client: MatrixClient): void {
   // Prevent registering duplicate listeners on the same client instance
@@ -711,6 +712,8 @@ function scanVoiceParticipants(client: MatrixClient, roomId: string): void {
 
   const homeserverUrl = client.getHomeserverUrl();
   const activeUserIds = new Set<string>();
+  const stateOnlyUserIds = new Set<string>();
+  const sdkGroupCallUserIds = new Set<string>();
   const myUserId = client.getUserId();
 
   // Strategy 1: Use SDK's GroupCall if one exists for this room
@@ -720,6 +723,7 @@ function scanVoiceParticipants(client: MatrixClient, roomId: string): void {
     if (gcParticipants && gcParticipants.size > 0) {
       for (const [member] of gcParticipants) {
         activeUserIds.add(member.userId);
+        sdkGroupCallUserIds.add(member.userId);
       }
       console.debug(`[voice] Room ${roomId}: SDK GroupCall found ${gcParticipants.size} participants`);
     }
@@ -784,6 +788,9 @@ function scanVoiceParticipants(client: MatrixClient, roomId: string): void {
 
     if (isActive) {
       activeUserIds.add(userId);
+      if (!sdkGroupCallUserIds.has(userId)) {
+        stateOnlyUserIds.add(userId);
+      }
       console.debug(`[voice] Room ${roomId}: state event detected active user ${userId} (key=${stateKey})`);
     }
   }
@@ -793,8 +800,33 @@ function scanVoiceParticipants(client: MatrixClient, roomId: string): void {
   }
 
   const participants: CallParticipant[] = [];
+  const callState = useCallStore.getState();
+  const isActiveLivekitRoom =
+    callState.activeCallRoomId === roomId && callState.connectionState === "connected";
+  const livekitUserIds = isActiveLivekitRoom
+    ? new Set(Array.from(callState.participants.values()).map((p) => p.userId))
+    : null;
+  if (isActiveLivekitRoom && myUserId) livekitUserIds?.add(myUserId);
+  const nowMs = Date.now();
+
   for (const userId of activeUserIds) {
     if (userId === myUserId && useCallStore.getState().activeCallRoomId === roomId) continue;
+
+    // Fallback stale detection: if a user is only present in Matrix call-member state
+    // but not in the actual connected LiveKit participant list for this active call,
+    // hide them after a short grace period.
+    if (isActiveLivekitRoom && stateOnlyUserIds.has(userId) && livekitUserIds && !livekitUserIds.has(userId)) {
+      const staleKey = `${roomId}|${userId}`;
+      const firstSeenMissing = _voiceStateOnlyMissingSince.get(staleKey) ?? nowMs;
+      _voiceStateOnlyMissingSince.set(staleKey, firstSeenMissing);
+      if (nowMs - firstSeenMissing > 60_000) {
+        console.debug(`[voice] Room ${roomId}: hiding stale state-only voice member ${userId} (missing from LiveKit >60s)`);
+        continue;
+      }
+    } else {
+      _voiceStateOnlyMissingSince.delete(`${roomId}|${userId}`);
+    }
+
     const member = room.getMember(userId);
     if (!member) continue;
     participants.push({
@@ -807,6 +839,13 @@ function scanVoiceParticipants(client: MatrixClient, roomId: string): void {
       isVideoMuted: true,
       feedId: null,
     });
+  }
+
+  // Cleanup stale tracking entries for users no longer present in this room scan.
+  for (const key of Array.from(_voiceStateOnlyMissingSince.keys())) {
+    if (!key.startsWith(`${roomId}|`)) continue;
+    const userId = key.slice(roomId.length + 1);
+    if (!activeUserIds.has(userId)) _voiceStateOnlyMissingSince.delete(key);
   }
 
   useCallStore.getState().setRoomParticipants(roomId, participants);

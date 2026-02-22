@@ -344,7 +344,7 @@ function syncStreamsFromRoom(lkRoom: Room) {
     if (pub.source === Track.Source.ScreenShare) {
       // Build a fresh stream to avoid reusing/mutating SDK-owned streams across re-subscribes.
       const stream = new MediaStream();
-      for (const t of mediaStream.getTracks()) {
+      for (const t of mediaStream.getVideoTracks()) {
         if (!stream.getTracks().some((existing) => existing.id === t.id)) {
           stream.addTrack(t);
         }
@@ -359,10 +359,10 @@ function syncStreamsFromRoom(lkRoom: Room) {
       lkStreamMap.set(feedId, stream);
     }
 
-    for (const t of mediaStream.getTracks()) {
+    for (const t of mediaStream.getVideoTracks()) {
       if (t.readyState === "ended") continue;
       // Main participant feed should expose at most one audio + one video track.
-      // If a participant rejoins/renegotiates, prefer the latest track for that kind.
+      // Participant feeds are video-only; prefer the latest video track.
       const existingSameKind = stream.getTracks().find((existing) => existing.kind === t.kind);
       if (existingSameKind && existingSameKind.id !== t.id) {
         stream.removeTrack(existingSameKind);

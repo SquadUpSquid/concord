@@ -30,20 +30,12 @@ function HiddenAudioTrack({
     const el = audioRef.current;
     if (!el) return;
 
-    // Build a fresh one-track stream for this audio track to avoid mixed-track corruption.
-    const sourceStream = trackRef.track.mediaStream;
-    if (!sourceStream) {
-      el.srcObject = null;
+    try {
+      trackRef.track.attach(el);
+    } catch (err) {
+      console.warn("Failed to attach LiveKit audio track:", err);
       return;
     }
-    const stream = new MediaStream();
-    for (const t of sourceStream.getAudioTracks()) {
-      if (!stream.getAudioTracks().some((existing) => existing.id === t.id)) {
-        stream.addTrack(t);
-      }
-    }
-
-    el.srcObject = stream;
     el.volume = Math.max(0, Math.min(1, volume));
     void el.play().catch(() => {});
 
@@ -55,6 +47,11 @@ function HiddenAudioTrack({
 
     return () => {
       if (audioRef.current) {
+        try {
+          trackRef.track.detach(audioRef.current);
+        } catch {
+          // best effort
+        }
         audioRef.current.pause();
         audioRef.current.srcObject = null;
       }

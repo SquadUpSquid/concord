@@ -405,6 +405,23 @@ function rebuildScreenshareFeeds(
   return feeds;
 }
 
+function removeParticipantMedia(identity: string) {
+  lkStreamMap.delete(`lk:${identity}`);
+  lkStreamMap.delete(`screenshare:lk:${identity}`);
+}
+
+function removeStaleFeedsForUser(currentIdentity: string) {
+  const currentUserId = extractUserId(currentIdentity);
+  for (const key of Array.from(lkStreamMap.keys())) {
+    if (!key.startsWith("lk:") && !key.startsWith("screenshare:lk:")) continue;
+    const identity = key.replace(/^screenshare:/, "").slice(3); // strip optional screenshare: + "lk:"
+    if (identity === currentIdentity) continue;
+    if (extractUserId(identity) === currentUserId) {
+      lkStreamMap.delete(key);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Connection lifecycle
 // ---------------------------------------------------------------------------
@@ -475,11 +492,19 @@ export async function joinLivekitCall(
   );
 
   lkRoom.on(RoomEvent.ParticipantConnected, () => {
+    // If the same Matrix user reconnects with a new LiveKit identity, purge any
+    // stale feed streams so they rejoin with a clean media state.
+    for (const [, rp] of lkRoom.remoteParticipants) {
+      removeStaleFeedsForUser(rp.identity);
+    }
+    syncStreamsFromRoom(lkRoom);
     const participants = rebuildLkParticipants(lkRoom, matrixClient, roomId);
-    useCallStore.setState({ participants });
+    const screenshareFeeds = rebuildScreenshareFeeds(lkRoom, matrixClient, roomId);
+    useCallStore.setState({ participants, screenshareFeeds });
   });
 
-  lkRoom.on(RoomEvent.ParticipantDisconnected, () => {
+  lkRoom.on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
+    removeParticipantMedia(participant.identity);
     syncStreamsFromRoom(lkRoom);
     const participants = rebuildLkParticipants(lkRoom, matrixClient, roomId);
     const screenshareFeeds = rebuildScreenshareFeeds(lkRoom, matrixClient, roomId);
@@ -491,7 +516,8 @@ export async function joinLivekitCall(
     const current = useCallStore.getState().participants;
     const updated = new Map(current);
     for (const [key, p] of updated) {
-      updated.set(key, { ...p, isSpeaking: speakerIds.has(p.userId) });
+      const identity = p.feedId?.startsWith("lk:") ? p.feedId.slice(3) : p.userId;
+      updated.set(key, { ...p, isSpeaking: speakerIds.has(identity) });
     }
     useCallStore.setState({
       participants: updated,

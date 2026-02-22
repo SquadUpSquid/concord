@@ -83,7 +83,7 @@ export function VoiceParticipant({ participant, isLocal = false }: VoiceParticip
           ref={videoRef}
           autoPlay
           playsInline
-          muted={isLocal || isDeafened}
+          muted
           className="h-full w-full rounded-md object-cover"
         />
       ) : (

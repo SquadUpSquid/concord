@@ -110,8 +110,12 @@ function toUserFriendlyError(err: unknown): string {
     return "You don't have permission to start a call in this room. Ask an admin to grant you permission, or wait for someone else to start the call.";
   }
 
+  if (msg.includes("LiveKit connection failed")) {
+    return msg;
+  }
+
   if (msg.includes("PC") || msg.includes("PeerConnection") || msg.includes("peer connection") || msg.includes("ICE")) {
-    return "Could not establish a connection to other participants. This may be caused by network restrictions or missing TURN server configuration.";
+    return `Could not establish a connection to other participants. This may be caused by network restrictions or missing TURN server configuration.\n\nDetails: ${msg}`;
   }
 
   if (msg.includes("getUserMedia") || msg.includes("media devices")) {
@@ -161,11 +165,16 @@ export const useCallStore = create<CallState>()((set, get) => ({
         );
       }
 
-      console.log("[livekit] Room uses LiveKit, fetching token from", lkFocus.livekitServiceUrl);
       const { url, jwt } = await fetchLivekitToken(client, lkFocus.livekitServiceUrl, roomId);
-      console.log("[livekit] Token received, connecting to", url);
 
-      await joinLivekitCall(client, roomId, url, jwt, lkFocus);
+      try {
+        await joinLivekitCall(client, roomId, url, jwt, lkFocus);
+      } catch (connectErr) {
+        const detail = connectErr instanceof Error ? connectErr.message : String(connectErr);
+        throw new Error(
+          `LiveKit connection failed.\nSFU: ${lkFocus.livekitServiceUrl}\nServer: ${url}\n${detail}`
+        );
+      }
 
       const { audioInputDeviceId, videoInputDeviceId } = useSettingsStore.getState();
       const lkRoom = getActiveLkRoom();

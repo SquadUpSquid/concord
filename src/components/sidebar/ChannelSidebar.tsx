@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { useRoomStore, RoomSummary } from "@/stores/roomStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useChannelPrefsStore } from "@/stores/channelPrefsStore";
@@ -29,8 +29,12 @@ export function ChannelSidebar() {
   const [orphanCollapsed, setOrphanCollapsed] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [dragOverTarget, setDragOverTarget] = useState<{ catId: string; index: number } | null>(null);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [draggingSectionId, setDraggingSectionId] = useState<string | null>(null);
+  const [draggingId, _setDraggingId] = useState<string | null>(null);
+  const [draggingSectionId, _setDraggingSectionId] = useState<string | null>(null);
+  const draggingIdRef = useRef<string | null>(null);
+  const draggingSectionIdRef = useRef<string | null>(null);
+  const setDraggingId = (id: string | null) => { draggingIdRef.current = id; _setDraggingId(id); };
+  const setDraggingSectionId = (id: string | null) => { draggingSectionIdRef.current = id; _setDraggingSectionId(id); };
   const [sectionDropIndex, setSectionDropIndex] = useState<number | null>(null);
 
   const channelPrefs = useChannelPrefsStore((s) => s.prefs);
@@ -140,7 +144,7 @@ export function ChannelSidebar() {
   }
 
   function handleItemDragOver(e: React.DragEvent, catId: string, index: number) {
-    if (!draggingId) return;
+    if (!draggingIdRef.current) return;
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = "move";
@@ -233,7 +237,7 @@ export function ChannelSidebar() {
   }
 
   function handleSectionDragOver(e: React.DragEvent, index: number) {
-    if (!hasType(e.dataTransfer.types, SECTION_DND_TYPE)) return;
+    if (!draggingSectionIdRef.current) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     const rect = e.currentTarget.getBoundingClientRect();
@@ -455,9 +459,9 @@ export function ChannelSidebar() {
                   draggable={canManage}
                   onDragStart={canManage ? (e) => handleSectionDragStart(e, sectionId) : undefined}
                   onDragOver={canManage ? (e) => {
-                    if (draggingSectionId) {
+                    if (draggingSectionIdRef.current) {
                       handleSectionDragOver(e, secIdx);
-                    } else if (draggingId) {
+                    } else if (draggingIdRef.current) {
                       e.preventDefault();
                       e.dataTransfer.dropEffect = "move";
                     }
@@ -515,7 +519,7 @@ export function ChannelSidebar() {
                       {sectionChannels.length === 0 ? (
                         <div
                           className={`rounded px-2 py-1.5 text-xs text-text-muted ${!isDefault ? "italic" : ""} ${canManage && dragOverTarget?.catId === sectionId ? "bg-accent/10" : ""}`}
-                          onDragOver={canManage ? (e) => { if (!draggingId) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; setDragOverTarget({ catId: sectionId, index: 0 }); } : undefined}
+                          onDragOver={canManage ? (e) => { if (!draggingIdRef.current) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; setDragOverTarget({ catId: sectionId, index: 0 }); } : undefined}
                           onDrop={canManage ? (e) => handleDrop(e, sectionId) : undefined}
                         >{emptyLabel}</div>
                       ) : (

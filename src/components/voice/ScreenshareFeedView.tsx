@@ -10,7 +10,8 @@ interface ScreenshareFeedViewProps {
 export function ScreenshareFeedView({ feedId, displayName }: ScreenshareFeedViewProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const stream = getFeedStream(feedId);
-  const prefs = useCallStore((s) => s.screenshareAudioPrefs[feedId] ?? { muted: false, volume: 100 });
+  const rawPrefs = useCallStore((s) => s.screenshareAudioPrefs[feedId]);
+  const prefs = rawPrefs ?? { muted: false, volume: 100 };
   const setMuted = useCallStore((s) => s.setScreenshareAudioMuted);
   const setVolume = useCallStore((s) => s.setScreenshareAudioVolume);
 

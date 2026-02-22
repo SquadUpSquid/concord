@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useRoomStore, RoomSummary } from "@/stores/roomStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useChannelPrefsStore } from "@/stores/channelPrefsStore";
@@ -9,15 +9,11 @@ import { InviteItem } from "./InviteItem";
 import { POWER_LEVEL_MODERATOR } from "@/utils/roles";
 import { EmojiText } from "@/components/common/Emoji";
 
-const CHANNEL_DND_TYPE = "application/x-concord-channel";
-const SECTION_DND_TYPE = "application/x-concord-section";
-
-/** Check if a DnD type is present (works with both Array and DOMStringList). */
-function hasType(types: DataTransfer["types"], type: string): boolean {
-  return Array.prototype.includes.call(types, type);
-}
 const EMPTY_CATEGORIES: Category[] = [];
 const EMPTY_ORDER: string[] = [];
+
+// Minimum px the mouse must move before we start a drag
+const DRAG_THRESHOLD = 5;
 
 export function ChannelSidebar() {
   const rooms = useRoomStore((s) => s.rooms);
@@ -28,14 +24,23 @@ export function ChannelSidebar() {
 
   const [orphanCollapsed, setOrphanCollapsed] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [favoritesCollapsed, setFavoritesCollapsed] = useState(false);
+
+  // Mouse-based drag state
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [draggingSectionId, setDraggingSectionId] = useState<string | null>(null);
   const [dragOverTarget, setDragOverTarget] = useState<{ catId: string; index: number } | null>(null);
-  const [draggingId, _setDraggingId] = useState<string | null>(null);
-  const [draggingSectionId, _setDraggingSectionId] = useState<string | null>(null);
-  const draggingIdRef = useRef<string | null>(null);
-  const draggingSectionIdRef = useRef<string | null>(null);
-  const setDraggingId = (id: string | null) => { draggingIdRef.current = id; _setDraggingId(id); };
-  const setDraggingSectionId = (id: string | null) => { draggingSectionIdRef.current = id; _setDraggingSectionId(id); };
   const [sectionDropIndex, setSectionDropIndex] = useState<number | null>(null);
+
+  // Refs for mouse drag tracking (synchronous access in event handlers)
+  const dragRef = useRef<{
+    type: "channel" | "section";
+    id: string;
+    sourceCatId: string;
+    startY: number;
+    started: boolean;
+  } | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const channelPrefs = useChannelPrefsStore((s) => s.prefs);
   const categories = useCategoryStore((s) =>
@@ -52,8 +57,6 @@ export function ChannelSidebar() {
     [storedSectionOrder, categories]
   );
   const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
-
-  const [favoritesCollapsed, setFavoritesCollapsed] = useState(false);
 
   // Category create/rename state
   const [creatingCategory, setCreatingCategory] = useState(false);
@@ -134,26 +137,6 @@ export function ChannelSidebar() {
   const toggleSection = (id: string) =>
     setCollapsedSections((s) => ({ ...s, [id]: !s[id] }));
 
-  // ── Drag-and-drop within a category ──
-  function handleDragStart(e: React.DragEvent, roomId: string, catId: string) {
-    e.stopPropagation();
-    e.dataTransfer.setData(CHANNEL_DND_TYPE, JSON.stringify({ roomId, catId }));
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", "");
-    setDraggingId(roomId);
-  }
-
-  function handleItemDragOver(e: React.DragEvent, catId: string, index: number) {
-    if (!draggingIdRef.current) return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = "move";
-    const rect = e.currentTarget.getBoundingClientRect();
-    const midY = rect.top + rect.height / 2;
-    const insertAt = e.clientY < midY ? index : index + 1;
-    setDragOverTarget({ catId, index: insertAt });
-  }
-
   const isDefaultSection = (id: string) => id === "__text" || id === "__voice";
 
   const sectionChannelsById = useMemo(() => {
@@ -178,87 +161,173 @@ export function ChannelSidebar() {
     return sectionOrder.filter((sectionId) => (sectionChannelsById.get(sectionId)?.length ?? 0) > 0);
   }, [canManage, sectionOrder, sectionChannelsById]);
 
-  function handleDrop(e: React.DragEvent, targetCatId: string) {
-    // Section drags: let the event bubble up to the section-level handler
-    if (hasType(e.dataTransfer.types, SECTION_DND_TYPE)) return;
+  // ── Mouse-based drag-and-drop ──
+
+  function handleChannelMouseDown(e: React.MouseEvent, roomId: string, catId: string) {
+    if (e.button !== 0) return; // left-click only
     e.preventDefault();
-    e.stopPropagation();
-    const insertIndex = dragOverTarget?.index ?? 0;
-    setDragOverTarget(null);
-    setDraggingId(null);
-    if (!selectedSpaceId) return;
-    try {
-      const raw = e.dataTransfer.getData(CHANNEL_DND_TYPE);
-      if (!raw) return;
-      const { roomId, catId: sourceCatId } = JSON.parse(raw) as { roomId: string; catId: string };
+    dragRef.current = { type: "channel", id: roomId, sourceCatId: catId, startY: e.clientY, started: false };
+  }
 
-      // Same section, same position — nothing to do
-      if (sourceCatId === targetCatId && isDefaultSection(targetCatId)) return;
+  function handleSectionMouseDown(e: React.MouseEvent, sectionId: string) {
+    if (e.button !== 0) return;
+    // Don't start section drag if clicking on buttons/inputs
+    const target = e.target as HTMLElement;
+    if (target.closest("button") || target.closest("input") || target.closest("span[title]")) return;
+    e.preventDefault();
+    dragRef.current = { type: "section", id: sectionId, sourceCatId: "", startY: e.clientY, started: false };
+  }
 
-      const updated = categories.map((c) => ({ ...c, channelIds: [...c.channelIds] }));
+  // Global mousemove/mouseup handlers for drag tracking
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      const drag = dragRef.current;
+      if (!drag) return;
 
-      // Remove from source custom category (default sections don't track IDs)
-      if (!isDefaultSection(sourceCatId)) {
-        const src = updated.find((c) => c.id === sourceCatId);
-        if (src) src.channelIds = src.channelIds.filter((id) => id !== roomId);
-      }
-
-      // Add to target
-      if (isDefaultSection(targetCatId)) {
-        // Dropping back to a default section: remove from all custom categories
-        for (const c of updated) c.channelIds = c.channelIds.filter((id) => id !== roomId);
-      } else {
-        // Dropping into a custom section
-        const tgt = updated.find((c) => c.id === targetCatId);
-        if (tgt) {
-          tgt.channelIds = tgt.channelIds.filter((id) => id !== roomId);
-          tgt.channelIds.splice(insertIndex, 0, roomId);
+      // Check threshold
+      if (!drag.started) {
+        if (Math.abs(e.clientY - drag.startY) < DRAG_THRESHOLD) return;
+        drag.started = true;
+        if (drag.type === "channel") {
+          setDraggingId(drag.id);
+        } else {
+          setDraggingSectionId(drag.id);
         }
       }
-      saveCategories(selectedSpaceId, updated);
-    } catch {
-      // ignore
+
+      // Find the element under the cursor using data attributes
+      const container = scrollContainerRef.current;
+      if (!container) return;
+
+      if (drag.type === "channel") {
+        // Find which channel item we're over
+        const channelEls = container.querySelectorAll<HTMLElement>("[data-channel-id]");
+        let bestTarget: { catId: string; index: number } | null = null;
+
+        for (const el of channelEls) {
+          const rect = el.getBoundingClientRect();
+          if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+            const catId = el.dataset.channelCat!;
+            const index = parseInt(el.dataset.channelIdx!, 10);
+            const midY = rect.top + rect.height / 2;
+            bestTarget = { catId, index: e.clientY < midY ? index : index + 1 };
+            break;
+          }
+        }
+
+        // Also check empty section drop zones
+        if (!bestTarget) {
+          const emptyEls = container.querySelectorAll<HTMLElement>("[data-empty-section]");
+          for (const el of emptyEls) {
+            const rect = el.getBoundingClientRect();
+            if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+              bestTarget = { catId: el.dataset.emptySection!, index: 0 };
+              break;
+            }
+          }
+        }
+
+        // Check section containers as fallback (drop at end of section)
+        if (!bestTarget) {
+          const sectionEls = container.querySelectorAll<HTMLElement>("[data-section-id]");
+          for (const el of sectionEls) {
+            const rect = el.getBoundingClientRect();
+            if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+              const sectionId = el.dataset.sectionId!;
+              const count = parseInt(el.dataset.sectionCount ?? "0", 10);
+              bestTarget = { catId: sectionId, index: count };
+              break;
+            }
+          }
+        }
+
+        setDragOverTarget(bestTarget);
+      } else {
+        // Section drag - find which section index we're over
+        const sectionEls = container.querySelectorAll<HTMLElement>("[data-section-id]");
+        let bestIdx: number | null = null;
+        for (const el of sectionEls) {
+          const rect = el.getBoundingClientRect();
+          if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+            const idx = parseInt(el.dataset.sectionIdx!, 10);
+            const midY = rect.top + rect.height / 2;
+            bestIdx = e.clientY < midY ? idx : idx + 1;
+            break;
+          }
+        }
+        setSectionDropIndex(bestIdx);
+      }
     }
+
+    function onMouseUp() {
+      const drag = dragRef.current;
+      if (!drag || !drag.started) {
+        dragRef.current = null;
+        return;
+      }
+
+      if (drag.type === "channel") {
+        // Perform channel drop
+        performChannelDrop(drag.id, drag.sourceCatId);
+      } else {
+        // Perform section drop
+        performSectionDrop(drag.id);
+      }
+
+      dragRef.current = null;
+      setDraggingId(null);
+      setDraggingSectionId(null);
+      setDragOverTarget(null);
+      setSectionDropIndex(null);
+    }
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+  });
+
+  function performChannelDrop(roomId: string, sourceCatId: string) {
+    const target = dragOverTarget;
+    if (!target || !selectedSpaceId) return;
+    const targetCatId = target.catId;
+    const insertIndex = target.index;
+
+    if (sourceCatId === targetCatId && isDefaultSection(targetCatId)) return;
+
+    const updated = categories.map((c) => ({ ...c, channelIds: [...c.channelIds] }));
+
+    // Remove from source custom category
+    if (!isDefaultSection(sourceCatId)) {
+      const src = updated.find((c) => c.id === sourceCatId);
+      if (src) src.channelIds = src.channelIds.filter((id) => id !== roomId);
+    }
+
+    // Add to target
+    if (isDefaultSection(targetCatId)) {
+      for (const c of updated) c.channelIds = c.channelIds.filter((id) => id !== roomId);
+    } else {
+      const tgt = updated.find((c) => c.id === targetCatId);
+      if (tgt) {
+        tgt.channelIds = tgt.channelIds.filter((id) => id !== roomId);
+        tgt.channelIds.splice(insertIndex, 0, roomId);
+      }
+    }
+    saveCategories(selectedSpaceId!, updated);
   }
 
-  function handleDragEnd() {
-    setDragOverTarget(null);
-    setDraggingId(null);
-    setDraggingSectionId(null);
-    setSectionDropIndex(null);
-  }
-
-  // ── Section drag-and-drop ──
-  function handleSectionDragStart(e: React.DragEvent, catId: string) {
-    e.dataTransfer.setData(SECTION_DND_TYPE, catId);
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", "");
-    setDraggingSectionId(catId);
-  }
-
-  function handleSectionDragOver(e: React.DragEvent, index: number) {
-    if (!draggingSectionIdRef.current) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    const rect = e.currentTarget.getBoundingClientRect();
-    const midY = rect.top + rect.height / 2;
-    setSectionDropIndex(e.clientY < midY ? index : index + 1);
-  }
-
-  function handleSectionDrop(e: React.DragEvent) {
-    e.preventDefault();
-    const sectionId = e.dataTransfer.getData(SECTION_DND_TYPE);
-    const targetIdx = sectionDropIndex ?? 0;
-    setDraggingSectionId(null);
-    setSectionDropIndex(null);
-    if (!sectionId || !selectedSpaceId) return;
+  function performSectionDrop(sectionId: string) {
+    const targetIdx = sectionDropIndex;
+    if (targetIdx == null || !selectedSpaceId) return;
     const currentIdx = sectionOrder.indexOf(sectionId);
     if (currentIdx === -1 || currentIdx === targetIdx) return;
     const reordered = [...sectionOrder];
     const [moved] = reordered.splice(currentIdx, 1);
     const insertAt = targetIdx > currentIdx ? targetIdx - 1 : targetIdx;
     reordered.splice(insertAt, 0, moved);
-    saveSectionOrder(selectedSpaceId, reordered);
+    saveSectionOrder(selectedSpaceId!, reordered);
   }
 
   // ── Category CRUD ──
@@ -301,11 +370,6 @@ export function ChannelSidebar() {
       <div className="flex h-12 items-center border-b border-bg-tertiary px-4 shadow-sm">
         <h2 className="flex-1 truncate text-sm font-semibold text-text-primary">
           {spaceName}
-          {selectedSpaceId && (
-            <span className="ml-1 text-[9px] font-normal text-text-muted">
-              PL:{mySpacePowerLevel} {canManage ? "✓" : "✗"}
-            </span>
-          )}
         </h2>
         {selectedSpaceId === null ? (
           <button
@@ -332,7 +396,7 @@ export function ChannelSidebar() {
       </div>
 
       {/* Channel list */}
-      <div className="flex-1 overflow-y-auto px-1.5 py-2">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-1.5 py-2">
         {/* Pending Invites */}
         {pendingInvites.length > 0 && (
           <div className="mb-1.5">
@@ -461,21 +525,9 @@ export function ChannelSidebar() {
                 <div
                   key={sectionId}
                   className={`relative mb-1.5 ${draggingSectionId === sectionId ? "opacity-40" : ""}`}
-                  draggable={canManage}
-                  onDragStart={canManage ? (e) => handleSectionDragStart(e, sectionId) : undefined}
-                  onDragOver={canManage ? (e) => {
-                    if (draggingSectionIdRef.current) {
-                      handleSectionDragOver(e, secIdx);
-                    } else if (draggingIdRef.current) {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = "move";
-                    }
-                  } : undefined}
-                  onDrop={canManage ? (e) => {
-                    if (hasType(e.dataTransfer.types, SECTION_DND_TYPE)) handleSectionDrop(e);
-                    else handleDrop(e, sectionId);
-                  } : undefined}
-                  onDragEnd={canManage ? handleDragEnd : undefined}
+                  data-section-id={sectionId}
+                  data-section-idx={secIdx}
+                  data-section-count={sectionChannels.length}
                 >
                   {/* Section drop indicator */}
                   {canManage && sectionDropIndex === secIdx && draggingSectionId && draggingSectionId !== sectionId && (
@@ -483,7 +535,10 @@ export function ChannelSidebar() {
                   )}
 
                   {/* Section header */}
-                  <div className="group flex w-full items-center gap-1 px-1.5 py-1">
+                  <div
+                    className="group flex w-full items-center gap-1 px-1.5 py-1"
+                    onMouseDown={canManage ? (e) => handleSectionMouseDown(e, sectionId) : undefined}
+                  >
                     <button onClick={() => toggleSection(sectionId)} className="flex flex-1 items-center gap-1">
                       <svg className={`h-3 w-3 text-text-muted transition-transform ${isCollapsed ? "-rotate-90" : ""}`} viewBox="0 0 24 24" fill="currentColor">
                         <path d="M7 10l5 5 5-5z" />
@@ -524,21 +579,24 @@ export function ChannelSidebar() {
                       {sectionChannels.length === 0 ? (
                         <div
                           className={`rounded px-2 py-1.5 text-xs text-text-muted ${!isDefault ? "italic" : ""} ${canManage && dragOverTarget?.catId === sectionId ? "bg-accent/10" : ""}`}
-                          onDragOver={canManage ? (e) => { if (!draggingIdRef.current) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; setDragOverTarget({ catId: sectionId, index: 0 }); } : undefined}
-                          onDrop={canManage ? (e) => handleDrop(e, sectionId) : undefined}
+                          data-empty-section={sectionId}
                         >{emptyLabel}</div>
                       ) : (
                         sectionChannels.map((ch, i) => (
-                          <div key={ch.roomId} className="relative" draggable={canManage}
-                            onDragStart={canManage ? (e) => handleDragStart(e, ch.roomId, sectionId) : undefined}
-                            onDragOver={canManage ? (e) => handleItemDragOver(e, sectionId, i) : undefined}
-                            onDrop={canManage ? (e) => handleDrop(e, sectionId) : undefined}
-                            onDragEnd={canManage ? handleDragEnd : undefined}
+                          <div
+                            key={ch.roomId}
+                            className="relative"
+                            data-channel-id={ch.roomId}
+                            data-channel-cat={sectionId}
+                            data-channel-idx={i}
                           >
                             {canManage && dragOverTarget?.catId === sectionId && dragOverTarget.index === i && draggingId !== ch.roomId && (
                               <div className="absolute left-1 right-1 top-0 z-10 h-0.5 rounded bg-accent" />
                             )}
-                            <div className={`${canManage ? "cursor-grab active:cursor-grabbing" : ""} ${draggingId === ch.roomId ? "opacity-40" : ""}`}>
+                            <div
+                              className={`${canManage ? "cursor-grab active:cursor-grabbing" : ""} ${draggingId === ch.roomId ? "opacity-40" : ""}`}
+                              onMouseDown={canManage ? (e) => handleChannelMouseDown(e, ch.roomId, sectionId) : undefined}
+                            >
                               <ChannelItem roomId={ch.roomId} name={ch.name} channelType={ch.channelType} unreadCount={ch.unreadCount} isSelected={selectedRoomId === ch.roomId} onClick={() => selectRoom(ch.roomId)} />
                             </div>
                             {canManage && dragOverTarget?.catId === sectionId && dragOverTarget.index === i + 1 && i === sectionChannels.length - 1 && draggingId !== ch.roomId && (
@@ -553,22 +611,9 @@ export function ChannelSidebar() {
               );
             })}
 
-            {/* Drop zone after last section for section reordering */}
-            {canManage && sectionOrder.length > 0 && (
-              <div
-                className="relative h-2"
-                onDragOver={(e) => {
-                  if (!hasType(e.dataTransfer.types, SECTION_DND_TYPE)) return;
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                  setSectionDropIndex(sectionOrder.length);
-                }}
-                onDrop={(e) => { if (hasType(e.dataTransfer.types, SECTION_DND_TYPE)) handleSectionDrop(e); }}
-              >
-                {sectionDropIndex === sectionOrder.length && draggingSectionId && (
-                  <div className="absolute left-0 right-0 top-0 z-10 h-0.5 rounded bg-accent" />
-                )}
-              </div>
+            {/* Section drop indicator after last section */}
+            {canManage && sectionDropIndex === visibleSectionOrder.length && draggingSectionId && (
+              <div className="relative h-0.5 rounded bg-accent" />
             )}
 
             {/* Create Section button */}

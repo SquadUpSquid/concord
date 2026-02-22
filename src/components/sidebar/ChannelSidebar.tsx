@@ -301,6 +301,11 @@ export function ChannelSidebar() {
       <div className="flex h-12 items-center border-b border-bg-tertiary px-4 shadow-sm">
         <h2 className="flex-1 truncate text-sm font-semibold text-text-primary">
           {spaceName}
+          {selectedSpaceId && (
+            <span className="ml-1 text-[9px] font-normal text-text-muted">
+              PL:{mySpacePowerLevel} {canManage ? "✓" : "✗"}
+            </span>
+          )}
         </h2>
         {selectedSpaceId === null ? (
           <button

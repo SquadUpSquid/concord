@@ -76,12 +76,42 @@ jobs:
 
           rm -f "$RUNNER_TEMP/preflight-test.txt" "$RUNNER_TEMP/preflight-test.txt.sig"
 
+      - name: Validate Apple signing secrets
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -z "${APPLE_CERTIFICATE:-}" ]          && missing+=("APPLE_CERTIFICATE")
+          [ -z "${APPLE_CERTIFICATE_PASSWORD:-}" ] && missing+=("APPLE_CERTIFICATE_PASSWORD")
+          [ -z "${APPLE_SIGNING_IDENTITY:-}" ]     && missing+=("APPLE_SIGNING_IDENTITY")
+          [ -z "${APPLE_ID:-}" ]                   && missing+=("APPLE_ID")
+          [ -z "${APPLE_PASSWORD:-}" ]             && missing+=("APPLE_PASSWORD")
+          [ -z "${APPLE_TEAM_ID:-}" ]              && missing+=("APPLE_TEAM_ID")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "Missing required Apple signing/notarization secrets: ${missing[*]}"
+            exit 1
+          fi
+
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Concord ${{ github.ref_name }}"
